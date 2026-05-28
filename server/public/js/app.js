@@ -3,8 +3,8 @@ const WS_URL = `${WS_PROTO}//${location.host}`;
 const HTTP_URL = location.origin;
 
 let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
-let micStream = null, audioRecorder = null, audioQ = [], playing = false;
-let myUsername = '', myName = '', chatTarget = '';
+let micStream = null, audioRecorder = null, audioCtx = null, audioQ = [], playing = false;
+let myUsername = '', myName = '', chatTarget = '', refreshInterval = null;
 
 // DOM refs
 const $ = id => document.getElementById(id);
@@ -58,9 +58,9 @@ function connectApp(username, name) {
 
   const url = `${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`;
   ws = new WebSocket(url);
-  ws.onopen = () => loadContacts();
+  ws.onopen = () => { loadContacts(); refreshInterval = setInterval(loadContacts, 5000); };
   ws.onmessage = e => handleMsg(JSON.parse(e.data));
-  ws.onclose = () => setTimeout(() => location.reload(), 2000);
+  ws.onclose = () => { if (refreshInterval) clearInterval(refreshInterval); setTimeout(() => location.reload(), 2000); };
 }
 
 function handleMsg(msg) {
@@ -131,6 +131,8 @@ $('searchUser').onkeydown = e => { if (e.key === 'Enter') $('callUserBtn').click
 
 // === Call ===
 function startCall(username, name) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   $('callDisplayName').textContent = name;
   $('callStatusText').textContent = 'Calling...';
   callingPage.classList.remove('hide'); mainPage.classList.add('hide');
@@ -143,6 +145,8 @@ $('callEndBtn').onclick = () => { if (currentCallId) send({type:'end_call', call
 
 $('acceptBtn').onclick = () => {
   if (currentCallId && ws) {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     send({type:'accept_call', callId: currentCallId});
     $('callDisplayName').textContent = $('incomingName').textContent;
     $('callStatusText').textContent = 'Connected';
@@ -171,40 +175,46 @@ function endCallUI() {
   mainPage.classList.remove('hide'); loadContacts();
 }
 
-// === Audio (MediaRecorder for sending, Audio elements for receiving) ===
+// === Audio (MediaRecorder for sending, Web Audio for receiving) ===
 function startAudioStream() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
     micStream = stream;
     const mime = 'audio/webm;codecs=opus';
-    audioRecorder = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported(mime) ? mime : ''});
-    audioRecorder.ondataavailable = e => {
-      if (e.data.size > 0 && currentCallId) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const b64 = reader.result.split(',')[1];
-          send({type:'audio', callId:currentCallId, data: b64});
-        };
-        reader.readAsDataURL(e.data);
-      }
-    };
-    audioRecorder.start(100);
+    try {
+      audioRecorder = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported(mime) ? mime : ''});
+      audioRecorder.ondataavailable = e => {
+        if (e.data.size > 0 && currentCallId) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const b64 = reader.result.split(',')[1];
+            send({type:'audio', callId:currentCallId, data: b64});
+          };
+          reader.readAsDataURL(e.data);
+        }
+      };
+      audioRecorder.start(100);
+    } catch(e) { alert('Audio recording not supported'); }
   }).catch(() => alert('Microphone access denied. Allow mic in browser settings.'));
 }
 
 function playNext() {
-  if (!audioQ.length) { playing=false; return; }
+  if (!audioQ.length || !audioCtx) { playing=false; return; }
   playing=true;
   const b64 = audioQ.shift();
-  const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], {type: 'audio/webm;codecs=opus'});
-  const url = URL.createObjectURL(blob);
-  const el = new Audio(url);
-  el.onended = () => { URL.revokeObjectURL(url); playNext(); };
-  el.onerror = () => { URL.revokeObjectURL(url); playNext(); };
-  el.play();
+  try {
+    const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], {type: 'audio/webm;codecs=opus'});
+    const url = URL.createObjectURL(blob);
+    const el = new Audio(url);
+    el.onended = () => { URL.revokeObjectURL(url); playNext(); };
+    el.onerror = () => { URL.revokeObjectURL(url); setTimeout(playNext, 50); };
+    el.play().catch(() => { URL.revokeObjectURL(url); setTimeout(playNext, 50); });
+  } catch(e) { setTimeout(playNext, 50); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
-function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioRecorder&&audioRecorder.state!=='inactive')audioRecorder.stop(); if(micStream)micStream.getTracks().forEach(t=>t.stop()); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
+function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioRecorder&&audioRecorder.state!=='inactive')audioRecorder.stop(); if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(refreshInterval)clearInterval(refreshInterval); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
 
 // === Tabs ===
 $('tabContacts').onclick = function() { $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active'); $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide'); loadContacts(); };
