@@ -13,26 +13,34 @@ const callingPage = $('callingPage'), incomingPage = $('incomingPage');
 const contactsList = $('contactsList'), chatContactsList = $('chatContactsList'), chatMessages = $('chatMessages');
 
 // === Auth ===
-$('showRegister').onclick = () => { loginPage.classList.add('hide'); registerPage.classList.remove('hide'); };
-$('showLogin').onclick = () => { registerPage.classList.add('hide'); loginPage.classList.remove('hide'); };
+$('showRegister').onclick = e => { e.preventDefault(); loginPage.classList.add('hide'); registerPage.classList.remove('hide'); };
+$('showLogin').onclick = e => { e.preventDefault(); registerPage.classList.add('hide'); loginPage.classList.remove('hide'); };
 
 $('loginBtn').onclick = async () => {
   const u = $('loginUser').value.trim().toLowerCase(), p = $('loginPass').value;
   if (!u || !p) return alert('Enter username and password');
-  const r = await fetch(HTTP_URL + '/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, password:p}) }).then(r=>r.json());
-  if (!r.success) return alert(r.error);
-  localStorage.setItem('fc_user', r.user.username); localStorage.setItem('fc_name', r.user.name);
-  connectApp(r.user.username, r.user.name);
+  $('loginBtn').textContent = 'Signing in...'; $('loginBtn').disabled = true;
+  try {
+    const res = await fetch(HTTP_URL + '/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, password:p}) });
+    const r = await res.json();
+    if (!r.success) { $('loginBtn').textContent = 'Sign In'; $('loginBtn').disabled = false; return alert(r.error); }
+    localStorage.setItem('fc_user', r.user.username); localStorage.setItem('fc_name', r.user.name);
+    connectApp(r.user.username, r.user.name);
+  } catch(e) { $('loginBtn').textContent = 'Sign In'; $('loginBtn').disabled = false; alert('Connection error - check internet and try again'); }
 };
 
 $('regBtn').onclick = async () => {
   const u = $('regUser').value.trim().toLowerCase(), n = $('regName').value.trim(), p = $('regPass').value;
   if (!u || !n || !p) return alert('Fill all fields');
   if (u.includes(' ')) return alert('No spaces in username');
-  const r = await fetch(HTTP_URL + '/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, name:n, password:p}) }).then(r=>r.json());
-  if (!r.success) return alert(r.error);
-  localStorage.setItem('fc_user', u); localStorage.setItem('fc_name', n);
-  connectApp(u, n);
+  $('regBtn').textContent = 'Creating...'; $('regBtn').disabled = true;
+  try {
+    const res = await fetch(HTTP_URL + '/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, name:n, password:p}) });
+    const r = await res.json();
+    if (!r.success) { $('regBtn').textContent = 'Create Account'; $('regBtn').disabled = false; return alert(r.error); }
+    localStorage.setItem('fc_user', u); localStorage.setItem('fc_name', n);
+    connectApp(u, n);
+  } catch(e) { $('regBtn').textContent = 'Create Account'; $('regBtn').disabled = false; alert('Connection error - check internet and try again'); }
 };
 
 $('logoutBtn').onclick = () => {
@@ -257,6 +265,7 @@ function appendChatMsg(from, text, mine) {
   const savedUser = localStorage.getItem('fc_user');
   const savedName = localStorage.getItem('fc_name');
   if (savedUser && savedName) {
-    connectApp(savedUser, savedName);
+    try { connectApp(savedUser, savedName); }
+    catch(e) { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
   }
 })();
