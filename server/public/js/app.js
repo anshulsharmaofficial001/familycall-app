@@ -163,18 +163,26 @@ function endCallUI() {
 // === Audio ===
 function startAudioStream() {
   try {
+    if (!navigator.mediaDevices) { alert('Your browser does not support audio calls. Use Chrome or Edge.'); return; }
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    navigator.mediaDevices.getUserMedia({audio:true}).then(stream => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
       micStream = stream;
       const src = audioCtx.createMediaStreamSource(stream);
-      processor = audioCtx.createScriptProcessor(4096,1,1);
-      src.connect(processor); processor.connect(audioCtx.destination);
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      src.connect(processor);
       processor.onaudioprocess = e => {
         if (!currentCallId) return;
         send({type:'audio', callId:currentCallId, data: buf2b64(pcm16(e.inputBuffer.getChannelData(0)).buffer)});
       };
-    }).catch(() => alert('Microphone access needed'));
-  } catch(e) { alert('Audio error'); }
+    }).catch(err => {
+      let msg = 'Microphone access denied';
+      if (err.name === 'NotAllowedError') msg = 'Please allow microphone access in browser settings';
+      else if (err.name === 'NotFoundError') msg = 'No microphone found';
+      else if (err.name === 'NotReadableError') msg = 'Microphone is busy';
+      alert(msg);
+    });
+  } catch(e) { alert('Audio error: ' + e.message); }
 }
 
 function pcm16(f) { const i = new Int16Array(f.length); for(let j=0;j<f.length;j++){const s=Math.max(-1,Math.min(1,f[j]));i[j]=s<0?s*0x8000:s*0x7FFF;} return i; }
@@ -184,13 +192,14 @@ function b642buf(b) { const s=atob(b),u=new Uint8Array(s.length); for(let i=0;i<
 
 function playNext() {
   if (!audioQ.length || !audioCtx) { playing=false; return; }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   playing=true;
   try {
     const buf = b642buf(audioQ.shift()), f = f32(new Int16Array(buf)), ab = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
     ab.getChannelData(0).set(f);
     const n = audioCtx.createBufferSource(); n.buffer = ab; n.connect(audioCtx.destination);
     n.onended = () => playNext(); n.start();
-  } catch(e) { playNext(); }
+  } catch(e) { console.error('playNext err:', e); playNext(); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
