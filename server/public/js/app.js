@@ -3,7 +3,7 @@ const WS_URL = `${WS_PROTO}//${location.host}`;
 const HTTP_URL = location.origin;
 
 let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
-let audioCtx = null, processor = null, micStream = null, audioQ = [], playing = false;
+let micStream = null, audioRecorder = null, audioQ = [], playing = false;
 let myUsername = '', myName = '', chatTarget = '';
 
 // DOM refs
@@ -83,14 +83,13 @@ function handleMsg(msg) {
       endCallUI();
       break;
     case 'audio':
-        if (currentCallId === msg.callId && msg.data) { audioQ.push(msg.data); console.log('Audio: received chunk, queue=' + audioQ.length); if (!playing) { console.log('Audio: starting playNext'); playNext(); } }
+        if (currentCallId === msg.callId && msg.data) { if (audioQ.length < 50) audioQ.push(msg.data); if (!playing) playNext(); }
         break;
     case 'chat':
       appendChatMsg(msg.from, msg.text, false);
       loadChatContacts();
       break;
     case 'chat_sent':
-      appendChatMsg(myUsername, msg.text, true);
       break;
     case 'error': alert(msg.message); break;
   }
@@ -164,55 +163,42 @@ function endCallUI() {
   mainPage.classList.remove('hide'); loadContacts();
 }
 
-// === Audio ===
+// === Audio (MediaRecorder for sending, Audio elements for receiving) ===
+let audioRecorder = null;
+
 function startAudioStream() {
-  try {
-    if (!navigator.mediaDevices) { alert('Your browser does not support audio calls. Use Chrome or Edge.'); return; }
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
-      micStream = stream;
-      const src = audioCtx.createMediaStreamSource(stream);
-      processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      src.connect(processor);
-      const silent = audioCtx.createGain();
-      silent.gain.value = 0;
-      processor.connect(silent);
-      silent.connect(audioCtx.destination);
-      let chunkCount = 0;
-      processor.onaudioprocess = e => {
-        if (!currentCallId) return;
-        chunkCount++;
-        if (chunkCount % 30 === 0) console.log('Audio sent: ' + chunkCount);
-        send({type:'audio', callId:currentCallId, data: buf2b64(pcm16(e.inputBuffer.getChannelData(0)).buffer)});
-      };
-    }).catch(err => {
-      let msg = 'Microphone access denied. Please allow mic in browser settings (lock icon in address bar).';
-      alert(msg);
-    });
-  } catch(e) { console.error('Audio error:', e); }
+  navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
+    micStream = stream;
+    const mime = 'audio/webm;codecs=opus';
+    audioRecorder = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported(mime) ? mime : ''});
+    audioRecorder.ondataavailable = e => {
+      if (e.data.size > 0 && currentCallId) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const b64 = reader.result.split(',')[1];
+          send({type:'audio', callId:currentCallId, data: b64});
+        };
+        reader.readAsDataURL(e.data);
+      }
+    };
+    audioRecorder.start(100);
+  }).catch(() => alert('Microphone access denied. Allow mic in browser settings.'));
 }
 
-function pcm16(f) { const i = new Int16Array(f.length); for(let j=0;j<f.length;j++){const s=Math.max(-1,Math.min(1,f[j]));i[j]=s<0?s*0x8000:s*0x7FFF;} return i; }
-function f32(i) { const f = new Float32Array(i.length); for(let j=0;j<i.length;j++) f[j]=i[j]/(i[j]<0?0x8000:0x7FFF); return f; }
-function buf2b64(b) { let s=''; new Uint8Array(b).forEach(v=>s+=String.fromCharCode(v)); return btoa(s); }
-function b642buf(b) { const s=atob(b),u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u.buffer; }
-
 function playNext() {
-  if (!audioQ.length || !audioCtx) { playing=false; return; }
-  if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('Audio: resumed for playback'); }
+  if (!audioQ.length) { playing=false; return; }
   playing=true;
-  try {
-    const buf = b642buf(audioQ.shift()), f = f32(new Int16Array(buf)), ab = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
-    ab.getChannelData(0).set(f);
-    const n = audioCtx.createBufferSource(); n.buffer = ab; n.connect(audioCtx.destination);
-    n.onended = () => { console.log('Audio: chunk played, queue=' + audioQ.length); playNext(); };
-    n.start();
-  } catch(e) { console.error('playNext err:', e); setTimeout(playNext, 100); }
+  const b64 = audioQ.shift();
+  const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], {type: 'audio/webm;codecs=opus'});
+  const url = URL.createObjectURL(blob);
+  const el = new Audio(url);
+  el.onended = () => { URL.revokeObjectURL(url); playNext(); };
+  el.onerror = () => { URL.revokeObjectURL(url); playNext(); };
+  el.play();
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
-function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(processor)processor.disconnect(); if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(audioCtx)audioCtx.close(); audioCtx=null; processor=null; micStream=null; audioQ=[]; playing=false; }
+function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioRecorder&&audioRecorder.state!=='inactive')audioRecorder.stop(); if(micStream)micStream.getTracks().forEach(t=>t.stop()); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
 
 // === Tabs ===
 $('tabContacts').onclick = function() { $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active'); $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide'); loadContacts(); };
