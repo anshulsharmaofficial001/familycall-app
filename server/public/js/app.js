@@ -60,7 +60,7 @@ function connectApp(username, name) {
   ws = new WebSocket(url);
   ws.onopen = () => loadContacts();
   ws.onmessage = e => handleMsg(JSON.parse(e.data));
-  ws.onclose = () => setTimeout(() => connectApp(username, name), 3000);
+  ws.onclose = () => setTimeout(() => location.reload(), 2000);
 }
 
 function handleMsg(msg) {

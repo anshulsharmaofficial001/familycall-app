@@ -82,9 +82,8 @@ wss.on('connection', (ws, req) => {
 
   if (!username || !name) { ws.close(); return; }
 
-  if (!users[username]) users[username] = { name, username, password: '', online: false };
-  users[username].ws = ws;
-  users[username].online = true;
+  if (!users[username]) { ws.close(); return; }
+  users[username].ws = ws; users[username].online = true;
 
   console.log(`${name} (@${username}) connected`);
 
