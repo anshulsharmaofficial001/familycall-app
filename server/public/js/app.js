@@ -103,9 +103,12 @@ async function loadContacts() {
   const r = await fetch(HTTP_URL + '/api/users').then(r=>r.json());
   const others = r.filter(u => u.username !== myUsername);
   contactsList.innerHTML = others.map(u =>
-    `<li onclick="startCall('${u.username}','${u.name}')">
+    `<li>
       <span><span class="dot ${u.online?'dot-on':'dot-off'}"></span><span class="name">${u.name}</span> <span style="opacity:.6;font-size:13px">@${u.username}</span></span>
-      <span><button class="btn-small" onclick="event.stopPropagation();startCall('${u.username}','${u.name}')">📞</button></span>
+      <span>
+        <button class="btn-small" onclick="event.stopPropagation();openChat('${u.username}')">💬</button>
+        <button class="btn-small" onclick="event.stopPropagation();startCall('${u.username}','${u.name}')" style="margin-left:6px">📞</button>
+      </span>
     </li>`
   ).join('');
   $('noContacts').style.display = others.length ? 'none' : 'block';
@@ -217,16 +220,24 @@ $('tabChat').onclick = function() { $('tabChat').classList.add('active'); $('tab
 
 // === Chat ===
 function loadChatContacts() {
-  fetch(HTTP_URL + '/api/messages/' + myUsername).then(r=>r.json()).then(data => {
-    chatContactsList.innerHTML = Object.keys(data).map(u =>
-      `<li onclick="openChat('${u}')">💬 @${u} <span style="opacity:.6;font-size:12px">${data[u].length} msgs</span></li>`
-    ).join('') || '<li style="opacity:.6;font-size:13px;cursor:default">No conversations yet</li>';
+  fetch(HTTP_URL + '/api/users').then(r=>r.json()).then(users => {
+    const others = users.filter(u => u.username !== myUsername);
+    fetch(HTTP_URL + '/api/messages/' + myUsername).then(r=>r.json()).then(data => {
+      chatContactsList.innerHTML = others.map(u =>
+        `<li onclick="openChat('${u.username}')">
+          💬 <span class="name">${u.name}</span> @${u.username}
+          ${data[u.username] ? `<span style="opacity:.6;font-size:12px">${data[u.username].length} msgs</span>` : '<span style="opacity:.4;font-size:12px">Start Convo</span>'}
+        </li>`
+      ).join('');
+    });
   });
 }
 
 function openChat(username) {
   chatTarget = username; $('chatWith').textContent = '@' + username;
-  $('chatArea').classList.remove('hide');
+  $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active');
+  $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide');
+  $('chatArea').classList.remove('hide'); loadChatContacts();
   fetch(HTTP_URL + '/api/messages/' + myUsername).then(r=>r.json()).then(data => {
     chatMessages.innerHTML = (data[username]||[]).map(m =>
       `<div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">${m.text}</div>`
