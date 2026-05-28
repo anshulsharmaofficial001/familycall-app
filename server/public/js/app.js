@@ -165,34 +165,29 @@ function endCallUI() {
 function startAudioStream() {
   try {
     if (!navigator.mediaDevices) { alert('Your browser does not support audio calls. Use Chrome or Edge.'); return; }
-    console.log('Audio: creating AudioContext...');
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    console.log('Audio: state=' + audioCtx.state + ' sampleRate=' + audioCtx.sampleRate);
-    if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('Audio: resumed'); }
-    console.log('Audio: requesting mic...');
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
-      console.log('Audio: mic granted, tracks=' + stream.getAudioTracks().length);
       micStream = stream;
       const src = audioCtx.createMediaStreamSource(stream);
       processor = audioCtx.createScriptProcessor(4096, 1, 1);
       src.connect(processor);
-      console.log('Audio: processor created and connected');
+      const silent = audioCtx.createGain();
+      silent.gain.value = 0;
+      processor.connect(silent);
+      silent.connect(audioCtx.destination);
       let chunkCount = 0;
       processor.onaudioprocess = e => {
         if (!currentCallId) return;
         chunkCount++;
-        if (chunkCount % 10 === 0) console.log('Audio: sent ' + chunkCount + ' chunks');
+        if (chunkCount % 30 === 0) console.log('Audio sent: ' + chunkCount);
         send({type:'audio', callId:currentCallId, data: buf2b64(pcm16(e.inputBuffer.getChannelData(0)).buffer)});
       };
     }).catch(err => {
-      let msg = 'Microphone access denied';
-      console.error('getUserMedia error:', err.name, err.message);
-      if (err.name === 'NotAllowedError') msg = 'Please allow microphone access in browser settings';
-      else if (err.name === 'NotFoundError') msg = 'No microphone found';
-      else if (err.name === 'NotReadableError') msg = 'Microphone is busy';
+      let msg = 'Microphone access denied. Please allow mic in browser settings (lock icon in address bar).';
       alert(msg);
     });
-  } catch(e) { console.error('Audio error:', e); alert('Audio error: ' + e.message); }
+  } catch(e) { console.error('Audio error:', e); }
 }
 
 function pcm16(f) { const i = new Int16Array(f.length); for(let j=0;j<f.length;j++){const s=Math.max(-1,Math.min(1,f[j]));i[j]=s<0?s*0x8000:s*0x7FFF;} return i; }
