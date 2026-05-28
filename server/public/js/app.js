@@ -73,6 +73,7 @@ function handleMsg(msg) {
       break;
     case 'call_accepted':
       $('callStatusText').textContent = 'Connected';
+      console.log('Call accepted, starting audio stream...');
       startAudioStream();
       break;
     case 'call_rejected':
@@ -82,8 +83,8 @@ function handleMsg(msg) {
       endCallUI();
       break;
     case 'audio':
-      if (currentCallId === msg.callId && msg.data) { audioQ.push(msg.data); if (!playing) playNext(); }
-      break;
+        if (currentCallId === msg.callId && msg.data) { audioQ.push(msg.data); console.log('Audio: received chunk, queue=' + audioQ.length); if (!playing) { console.log('Audio: starting playNext'); playNext(); } }
+        break;
     case 'chat':
       appendChatMsg(msg.from, msg.text, false);
       loadChatContacts();
@@ -164,25 +165,34 @@ function endCallUI() {
 function startAudioStream() {
   try {
     if (!navigator.mediaDevices) { alert('Your browser does not support audio calls. Use Chrome or Edge.'); return; }
+    console.log('Audio: creating AudioContext...');
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+    console.log('Audio: state=' + audioCtx.state + ' sampleRate=' + audioCtx.sampleRate);
+    if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('Audio: resumed'); }
+    console.log('Audio: requesting mic...');
     navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
+      console.log('Audio: mic granted, tracks=' + stream.getAudioTracks().length);
       micStream = stream;
       const src = audioCtx.createMediaStreamSource(stream);
       processor = audioCtx.createScriptProcessor(4096, 1, 1);
       src.connect(processor);
+      console.log('Audio: processor created and connected');
+      let chunkCount = 0;
       processor.onaudioprocess = e => {
         if (!currentCallId) return;
+        chunkCount++;
+        if (chunkCount % 10 === 0) console.log('Audio: sent ' + chunkCount + ' chunks');
         send({type:'audio', callId:currentCallId, data: buf2b64(pcm16(e.inputBuffer.getChannelData(0)).buffer)});
       };
     }).catch(err => {
       let msg = 'Microphone access denied';
+      console.error('getUserMedia error:', err.name, err.message);
       if (err.name === 'NotAllowedError') msg = 'Please allow microphone access in browser settings';
       else if (err.name === 'NotFoundError') msg = 'No microphone found';
       else if (err.name === 'NotReadableError') msg = 'Microphone is busy';
       alert(msg);
     });
-  } catch(e) { alert('Audio error: ' + e.message); }
+  } catch(e) { console.error('Audio error:', e); alert('Audio error: ' + e.message); }
 }
 
 function pcm16(f) { const i = new Int16Array(f.length); for(let j=0;j<f.length;j++){const s=Math.max(-1,Math.min(1,f[j]));i[j]=s<0?s*0x8000:s*0x7FFF;} return i; }
@@ -192,14 +202,15 @@ function b642buf(b) { const s=atob(b),u=new Uint8Array(s.length); for(let i=0;i<
 
 function playNext() {
   if (!audioQ.length || !audioCtx) { playing=false; return; }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('Audio: resumed for playback'); }
   playing=true;
   try {
     const buf = b642buf(audioQ.shift()), f = f32(new Int16Array(buf)), ab = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
     ab.getChannelData(0).set(f);
     const n = audioCtx.createBufferSource(); n.buffer = ab; n.connect(audioCtx.destination);
-    n.onended = () => playNext(); n.start();
-  } catch(e) { console.error('playNext err:', e); playNext(); }
+    n.onended = () => { console.log('Audio: chunk played, queue=' + audioQ.length); playNext(); };
+    n.start();
+  } catch(e) { console.error('playNext err:', e); setTimeout(playNext, 100); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
