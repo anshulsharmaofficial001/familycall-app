@@ -200,6 +200,13 @@ function handleMessage(ws, msg, username, name) {
   }
 }
 
+app.get('/api/reset', (req, res) => {
+  Object.keys(users).forEach(k => delete users[k]);
+  Object.keys(calls).forEach(k => delete calls[k]);
+  Object.keys(messages).forEach(k => delete messages[k]);
+  res.json({ success: true, message: 'All data cleared' });
+});
+
 app.get('/call/:callId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
