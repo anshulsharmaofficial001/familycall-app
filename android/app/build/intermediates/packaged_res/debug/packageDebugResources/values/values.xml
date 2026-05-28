@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#43A047</color>
+    <color name="background">#F5F5F5</color>
+    <color name="black">#000000</color>
+    <color name="call_screen_bg">#1A237E</color>
+    <color name="green">#43A047</color>
+    <color name="primary">#1E88E5</color>
+    <color name="primary_dark">#1565C0</color>
+    <color name="red">#E53935</color>
+    <color name="white">#FFFFFF</color>
+    <dimen name="avatar_size">48dp</dimen>
+    <dimen name="fab_size">64dp</dimen>
+    <dimen name="padding_large">24dp</dimen>
+    <dimen name="padding_medium">16dp</dimen>
+    <dimen name="padding_small">8dp</dimen>
+    <string name="accept">Accept</string>
+    <string name="app_name">FamilyCall</string>
+    <string name="decline">Decline</string>
+    <string name="end_call">End Call</string>
+    <string name="incoming_call">Incoming Call</string>
+    <string name="mute">Mute</string>
+    <string name="speaker">Speaker</string>
+    <style name="Theme.FamilyCall" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:statusBarColor">@color/primary_dark</item>
+    </style>
+    <style name="Theme.FamilyCall.FullScreen" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@color/call_screen_bg</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+</resources>

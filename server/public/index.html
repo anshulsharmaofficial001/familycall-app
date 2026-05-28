@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#1A237E"><meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon-192.png"><title>FamilyCall</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1A237E;color:#fff;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px}
+h1{font-size:28px;margin:16px 0 4px}
+.sub{opacity:.7;font-size:14px;margin-bottom:20px}
+.card{background:rgba(255,255,255,.1);border-radius:16px;padding:24px;width:100%;max-width:400px;margin-bottom:12px}
+.input{width:100%;border-radius:8px;border:none;padding:12px;font-size:16px;background:rgba(255,255,255,.2);color:#fff;outline:none;margin-bottom:10px}
+.input::placeholder{color:rgba(255,255,255,.6)}
+.btn{background:#43A047;color:#fff;border:none;border-radius:8px;padding:12px;font-size:16px;cursor:pointer;width:100%}
+.btn:active{opacity:.8}
+.btn-outline{background:transparent;border:2px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;padding:8px 16px;font-size:14px;cursor:pointer}
+.btn-small{background:rgba(255,255,255,.15);border:none;border-radius:6px;padding:6px 12px;color:#fff;font-size:13px;cursor:pointer}
+.contacts{list-style:none;text-align:left;max-height:400px;overflow-y:auto}
+.contacts li{padding:12px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.contacts li:hover{background:rgba(255,255,255,.05)}
+.contacts li .name{font-weight:bold}
+.contacts li .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:8px}
+.dot-on{background:#43A047}.dot-off{background:#666}
+.chat-box{max-height:300px;overflow-y:auto;text-align:left;margin-bottom:10px;padding:8px}
+.chat-msg{padding:8px 12px;border-radius:12px;margin-bottom:6px;max-width:80%;word-break:break-word;font-size:14px}
+.chat-mine{background:#43A047;margin-left:auto}
+.chat-other{background:rgba(255,255,255,.15)}
+.chat-input{display:flex;gap:8px}
+.chat-input input{flex:1;border-radius:8px;border:none;padding:10px;font-size:14px;background:rgba(255,255,255,.2);color:#fff;outline:none}
+.chat-input input::placeholder{color:rgba(255,255,255,.6)}
+.chat-input button{background:#1E88E5;border:none;border-radius:8px;padding:10px 16px;color:#fff;cursor:pointer}
+.hide{display:none}
+.tabs{display:flex;gap:0;margin-bottom:16px;width:100%}
+.tabs button{flex:1;padding:10px;border:none;background:rgba(255,255,255,.1);color:#fff;cursor:pointer;border-radius:8px 8px 0 0}
+.tabs button.active{background:#43A047;font-weight:bold}
+.timer{font-size:36px;margin:24px 0;font-variant-numeric:tabular-nums}
+.call-actions{display:flex;gap:16px;justify-content:center;margin-top:16px}
+.call-actions button{width:64px;height:64px;border-radius:50%;border:none;font-size:24px;cursor:pointer}
+</style>
+</head><body>
+
+<div id="loginPage">
+  <h1>📞 FamilyCall</h1>
+  <p class="sub">Sign in to call your family</p>
+  <div class="card">
+    <input class="input" id="loginUser" placeholder="Username" maxlength="30" autocomplete="off">
+    <input class="input" id="loginPass" type="password" placeholder="Password" maxlength="30">
+    <button class="btn" id="loginBtn">Sign In</button>
+    <p style="margin-top:12px;font-size:13px;opacity:.7">New? <a href="#" id="showRegister" style="color:#81C784">Create Account</a></p>
+  </div>
+</div>
+
+<div id="registerPage" class="hide">
+  <h1>📞 FamilyCall</h1>
+  <p class="sub">Create your account</p>
+  <div class="card">
+    <input class="input" id="regUser" placeholder="Choose username" maxlength="30" autocomplete="off">
+    <input class="input" id="regName" placeholder="Your name" maxlength="50">
+    <input class="input" id="regPass" type="password" placeholder="Password" maxlength="30">
+    <button class="btn" id="regBtn">Create Account</button>
+    <p style="margin-top:12px;font-size:13px;opacity:.7">Already have an account? <a href="#" id="showLogin" style="color:#81C784">Sign In</a></p>
+  </div>
+</div>
+
+<div id="mainPage" class="hide">
+  <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:400px;margin-bottom:8px">
+    <h1 style="margin:0">📞 FamilyCall</h1>
+    <button class="btn-small" id="logoutBtn">Logout</button>
+  </div>
+  <p class="sub" style="margin-bottom:12px">Hi <span id="myName"></span> (@<span id="myUser"></span>)</p>
+
+  <div class="tabs">
+    <button id="tabContacts" class="active">Contacts</button>
+    <button id="tabChat">Chat</button>
+  </div>
+
+  <div class="card" id="contactsView">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input class="input" id="searchUser" placeholder="Search username..." style="margin:0;flex:1">
+      <button class="btn-outline" id="callUserBtn">📞 Call</button>
+    </div>
+    <ul class="contacts" id="contactsList"></ul>
+    <p id="noContacts" style="opacity:.6;font-size:14px;padding:8px;display:none">No users found</p>
+  </div>
+
+  <div class="card hide" id="chatView">
+    <div id="chatUsers" style="text-align:left;margin-bottom:8px">
+      <p style="opacity:.6;font-size:13px;margin-bottom:8px">Select a contact to chat</p>
+      <ul class="contacts" id="chatContactsList" style="max-height:150px"></ul>
+    </div>
+    <div id="chatArea" class="hide">
+      <p style="text-align:left;font-weight:bold;margin-bottom:8px">Chat with <span id="chatWith"></span></p>
+      <div class="chat-box" id="chatMessages"></div>
+      <div class="chat-input">
+        <input id="chatInput" placeholder="Type a message..." maxlength="500">
+        <button id="chatSendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="callingPage" class="hide">
+  <div class="card" style="text-align:center">
+    <p style="font-size:20px;font-weight:bold" id="callDisplayName">Call</p>
+    <div class="timer" id="callTimer">00:00</div>
+    <p style="opacity:.7;font-size:14px" id="callStatusText">Connecting...</p>
+    <div class="call-actions">
+      <button class="btn-small" id="muteBtn" style="font-size:20px;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.15)">🔇</button>
+      <button id="callEndBtn" style="background:#E53935;color:#fff;width:64px;height:64px;border-radius:50%;border:none;font-size:24px;cursor:pointer">✕</button>
+    </div>
+  </div>
+</div>
+
+<div id="incomingPage" class="hide">
+  <div class="card" style="text-align:center;background:#1B5E20;animation:pulse 1.5s infinite">
+    <p style="opacity:.8;text-transform:uppercase;font-size:13px;letter-spacing:1px">Incoming Call</p>
+    <p style="font-size:28px;font-weight:bold;margin:16px 0" id="incomingName">Unknown</p>
+    <div class="call-actions">
+      <button id="acceptBtn" style="background:#43A047;color:#fff;width:72px;height:72px;border-radius:50%;border:none;font-size:28px;cursor:pointer">📞</button>
+      <button id="declineBtn" style="background:#E53935;color:#fff;width:72px;height:72px;border-radius:50%;border:none;font-size:28px;cursor:pointer">✕</button>
+    </div>
+  </div>
+</div>
+
+<style>@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(76,175,80,.7)}70%{box-shadow:0 0 0 20px rgba(76,175,80,0)}100%{box-shadow:0 0 0 0 rgba(76,175,80,0)}}</style>
+
+<script src="/js/app.js"></script>
+</body></html>

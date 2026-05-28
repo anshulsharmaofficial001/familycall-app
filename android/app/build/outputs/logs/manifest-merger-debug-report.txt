@@ -1,0 +1,401 @@
+-- Merging decision tree log ---
+manifest
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:2:1-66:12
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:2:1-66:12
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:2:1-66:12
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:2:1-66:12
+MERGED from [androidx.databinding:viewbinding:8.3.2] C:\Users\imkal\.gradle\caches\8.9\transforms\a8ad7b443b9943c7c0449e39d4dd8302\transformed\viewbinding-8.3.2\AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.android.material:material:1.11.0] C:\Users\imkal\.gradle\caches\8.9\transforms\076dface8902f361cb11c9082433d661\transformed\material-1.11.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\imkal\.gradle\caches\8.9\transforms\125e26ce490bd257c7bb900f2a8eb36a\transformed\constraintlayout-2.1.4\AndroidManifest.xml:2:1-11:12
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\imkal\.gradle\caches\8.9\transforms\65b1a33c9f0230ba34f6b60cbcdc5cec\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\imkal\.gradle\caches\8.9\transforms\e74adb173f6bfdb6acb30e2ed635dede\transformed\appcompat-1.6.1\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\727e4396773d189bf566f7251da38efa\transformed\viewpager2-1.0.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\imkal\.gradle\caches\8.9\transforms\88ca428bab8293a755f88de1c47862a7\transformed\fragment-1.3.6\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.activity:activity:1.8.2] C:\Users\imkal\.gradle\caches\8.9\transforms\91c76208550e6c3883e45c6b03208f24\transformed\activity-1.8.2\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.activity:activity-ktx:1.8.2] C:\Users\imkal\.gradle\caches\8.9\transforms\022e6a44db0e96cea53b8df2cdf18030\transformed\activity-ktx-1.8.2\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\2ffcb2df879bddece63aa32dbd37881e\transformed\emoji2-views-helper-1.2.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\77461daa64d7bb13a6bc43a2bf2c39c3\transformed\drawerlayout-1.1.1\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\68bfd6bc64f5843b1009fbef5791eff8\transformed\coordinatorlayout-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\a6f9302c99f45af8482f5d306f0f9209\transformed\dynamicanimation-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.transition:transition:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\161d8c419524460b0b9406b7e121f2fd\transformed\transition-1.2.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\45b6cb9e6ba8eeaf85023caf84bf76ed\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\d5bfc44d0dcf34bd624d168118ed4362\transformed\vectordrawable-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\944ba004610118fb4d10d0ce70923611\transformed\viewpager-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\d9bfa42c8dd508af08f28ce4dd458ad1\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.loader:loader:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\e9a81e1f2f57578a613074498b7c8294\transformed\loader-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\58799d823999413a21b283f0e4de93c8\transformed\recyclerview-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.customview:customview:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0f0ae47ed50093257e713ec55dd446ad\transformed\customview-1.1.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:17:1-30:12
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] C:\Users\imkal\.gradle\caches\8.9\transforms\08268d704ee774e7a2ec27e2d6ce09b8\transformed\savedstate-ktx-1.2.1\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate:1.2.1] C:\Users\imkal\.gradle\caches\8.9\transforms\0099e86bf7fff9300a565b940b94c183\transformed\savedstate-1.2.1\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\ef2ae7c159e97d2750226b52d39f71df\transformed\lifecycle-livedata-core-ktx-2.7.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\b537776870836d7f1356ce4c59a57790\transformed\lifecycle-livedata-2.7.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\66130ab68b0cd4b2edf07443e84fe79c\transformed\lifecycle-livedata-core-2.7.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\c5f7f076655737aaa9d934b6b3bd68be\transformed\lifecycle-viewmodel-ktx-2.7.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\542580487d26cf75dde459b65f5ad5d0\transformed\lifecycle-runtime-ktx-2.7.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\e8e29c2d1536a37cfed332824ce9e465\transformed\lifecycle-viewmodel-2.7.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\789913fccbf7ba96c829f50dc47e3893\transformed\lifecycle-runtime-2.7.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-service:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\2a438714565d5b4908356caffc07e112\transformed\lifecycle-service-2.7.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\abb35e24c24fef8767f0f11083940857\transformed\lifecycle-viewmodel-savedstate-2.7.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.core:core-ktx:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0184d2d8b0caf185fe53f2188028f9c9\transformed\core-ktx-1.12.0\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.annotation:annotation-experimental:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\3987e90d6556cd8334404c2c55234bcf\transformed\annotation-experimental-1.3.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f9455109be5adfe4582cb42890f0d0a4\transformed\cursoradapter-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.cardview:cardview:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0c5c85d26dbcf96e4979aa2001c08c98\transformed\cardview-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.interpolator:interpolator:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\759f219460917eaeeb41bada9846dfc6\transformed\interpolator-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\89333b0c7f728828f67a80f1eaca58bd\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:17:1-27:12
+MERGED from [androidx.arch.core:core-runtime:2.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\a0544cb3c5f45d24ea6d23fea171b0d4\transformed\core-runtime-2.2.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:17:1-55:12
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:17:1-33:12
+MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\05a79fc0a52f470ad810c986c0956ff7\transformed\tracing-1.0.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.documentfile:documentfile:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\b9aec9c1f0944b7577d7903824d448e3\transformed\documentfile-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0bdea243adb72925888518d77df80dec\transformed\localbroadcastmanager-1.0.0\AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.print:print:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0eba3a93714dd07b6f7cd350223d1cf4\transformed\print-1.0.0\AndroidManifest.xml:17:1-22:12
+	package
+		INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+	android:versionName
+		INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+	android:versionCode
+		INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+	xmlns:android
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:4:5-67
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:4:22-64
+uses-permission#android.permission.RECORD_AUDIO
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:5:5-71
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:5:22-68
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:6:5-79
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:6:22-76
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:7:5-77
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:7:22-74
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:8:5-77
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:8:22-74
+uses-permission#android.permission.USE_FULL_SCREEN_INTENT
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:9:5-81
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:9:22-78
+uses-permission#android.permission.VIBRATE
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:10:5-66
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:10:22-63
+uses-permission#android.permission.WAKE_LOCK
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:11:5-68
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:11:22-65
+uses-permission#android.permission.READ_PHONE_STATE
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:12:5-75
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:12:22-72
+application
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:14:5-65:19
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:14:5-65:19
+MERGED from [com.google.android.material:material:1.11.0] C:\Users\imkal\.gradle\caches\8.9\transforms\076dface8902f361cb11c9082433d661\transformed\material-1.11.0\AndroidManifest.xml:22:5-20
+MERGED from [com.google.android.material:material:1.11.0] C:\Users\imkal\.gradle\caches\8.9\transforms\076dface8902f361cb11c9082433d661\transformed\material-1.11.0\AndroidManifest.xml:22:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\imkal\.gradle\caches\8.9\transforms\125e26ce490bd257c7bb900f2a8eb36a\transformed\constraintlayout-2.1.4\AndroidManifest.xml:9:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\imkal\.gradle\caches\8.9\transforms\125e26ce490bd257c7bb900f2a8eb36a\transformed\constraintlayout-2.1.4\AndroidManifest.xml:9:5-20
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:28:5-89
+MERGED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:28:5-89
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\89333b0c7f728828f67a80f1eaca58bd\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\89333b0c7f728828f67a80f1eaca58bd\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:25:5-31:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:25:5-31:19
+	android:extractNativeLibs
+		INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+	android:appComponentFactory
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
+	android:supportsRtl
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:19:9-35
+	android:label
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:18:9-41
+	android:icon
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:17:9-43
+	android:allowBackup
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:16:9-35
+	android:theme
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:20:9-48
+	android:networkSecurityConfig
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:21:9-69
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:15:9-38
+activity#com.familycall.app.LoginActivity
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:23:9-31:20
+	android:exported
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:25:13-36
+	android:theme
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:26:13-52
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:24:13-42
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:27:13-30:29
+action#android.intent.action.MAIN
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:28:17-69
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:28:25-66
+category#android.intent.category.LAUNCHER
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:29:17-77
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:29:27-74
+activity#com.familycall.app.MainActivity
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:33:9-37:43
+	android:turnScreenOn
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:37:13-40
+	android:showWhenLocked
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:36:13-42
+	android:exported
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:35:13-37
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:34:13-41
+activity#com.familycall.app.IncomingCallActivity
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:39:9-45:66
+	android:turnScreenOn
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:43:13-40
+	android:showWhenLocked
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:42:13-42
+	android:launchMode
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:44:13-48
+	android:exported
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:41:13-37
+	android:theme
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:45:13-63
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:40:13-49
+activity#com.familycall.app.CallActivity
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:47:9-53:66
+	android:turnScreenOn
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:51:13-40
+	android:showWhenLocked
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:50:13-42
+	android:launchMode
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:52:13-48
+	android:exported
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:49:13-37
+	android:theme
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:53:13-63
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:48:13-41
+activity#com.familycall.app.ChatActivity
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:55:9-58:55
+	android:exported
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:57:13-37
+	android:theme
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:58:13-52
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:56:13-41
+service#com.familycall.app.service.CallForegroundService
+ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:60:9-63:57
+	android:exported
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:62:13-37
+	android:foregroundServiceType
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:63:13-54
+	android:name
+		ADDED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml:61:13-58
+uses-sdk
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+MERGED from [androidx.databinding:viewbinding:8.3.2] C:\Users\imkal\.gradle\caches\8.9\transforms\a8ad7b443b9943c7c0449e39d4dd8302\transformed\viewbinding-8.3.2\AndroidManifest.xml:5:5-44
+MERGED from [androidx.databinding:viewbinding:8.3.2] C:\Users\imkal\.gradle\caches\8.9\transforms\a8ad7b443b9943c7c0449e39d4dd8302\transformed\viewbinding-8.3.2\AndroidManifest.xml:5:5-44
+MERGED from [com.google.android.material:material:1.11.0] C:\Users\imkal\.gradle\caches\8.9\transforms\076dface8902f361cb11c9082433d661\transformed\material-1.11.0\AndroidManifest.xml:20:5-44
+MERGED from [com.google.android.material:material:1.11.0] C:\Users\imkal\.gradle\caches\8.9\transforms\076dface8902f361cb11c9082433d661\transformed\material-1.11.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\imkal\.gradle\caches\8.9\transforms\125e26ce490bd257c7bb900f2a8eb36a\transformed\constraintlayout-2.1.4\AndroidManifest.xml:5:5-7:41
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\imkal\.gradle\caches\8.9\transforms\125e26ce490bd257c7bb900f2a8eb36a\transformed\constraintlayout-2.1.4\AndroidManifest.xml:5:5-7:41
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\imkal\.gradle\caches\8.9\transforms\65b1a33c9f0230ba34f6b60cbcdc5cec\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\imkal\.gradle\caches\8.9\transforms\65b1a33c9f0230ba34f6b60cbcdc5cec\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\imkal\.gradle\caches\8.9\transforms\e74adb173f6bfdb6acb30e2ed635dede\transformed\appcompat-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\imkal\.gradle\caches\8.9\transforms\e74adb173f6bfdb6acb30e2ed635dede\transformed\appcompat-1.6.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\727e4396773d189bf566f7251da38efa\transformed\viewpager2-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager2:viewpager2:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\727e4396773d189bf566f7251da38efa\transformed\viewpager2-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\imkal\.gradle\caches\8.9\transforms\88ca428bab8293a755f88de1c47862a7\transformed\fragment-1.3.6\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\imkal\.gradle\caches\8.9\transforms\88ca428bab8293a755f88de1c47862a7\transformed\fragment-1.3.6\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.activity:activity:1.8.2] C:\Users\imkal\.gradle\caches\8.9\transforms\91c76208550e6c3883e45c6b03208f24\transformed\activity-1.8.2\AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.8.2] C:\Users\imkal\.gradle\caches\8.9\transforms\91c76208550e6c3883e45c6b03208f24\transformed\activity-1.8.2\AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity-ktx:1.8.2] C:\Users\imkal\.gradle\caches\8.9\transforms\022e6a44db0e96cea53b8df2cdf18030\transformed\activity-ktx-1.8.2\AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-ktx:1.8.2] C:\Users\imkal\.gradle\caches\8.9\transforms\022e6a44db0e96cea53b8df2cdf18030\transformed\activity-ktx-1.8.2\AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\2ffcb2df879bddece63aa32dbd37881e\transformed\emoji2-views-helper-1.2.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\2ffcb2df879bddece63aa32dbd37881e\transformed\emoji2-views-helper-1.2.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\77461daa64d7bb13a6bc43a2bf2c39c3\transformed\drawerlayout-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.drawerlayout:drawerlayout:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\77461daa64d7bb13a6bc43a2bf2c39c3\transformed\drawerlayout-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\68bfd6bc64f5843b1009fbef5791eff8\transformed\coordinatorlayout-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.coordinatorlayout:coordinatorlayout:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\68bfd6bc64f5843b1009fbef5791eff8\transformed\coordinatorlayout-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\a6f9302c99f45af8482f5d306f0f9209\transformed\dynamicanimation-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.dynamicanimation:dynamicanimation:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\a6f9302c99f45af8482f5d306f0f9209\transformed\dynamicanimation-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.transition:transition:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\161d8c419524460b0b9406b7e121f2fd\transformed\transition-1.2.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.transition:transition:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\161d8c419524460b0b9406b7e121f2fd\transformed\transition-1.2.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\45b6cb9e6ba8eeaf85023caf84bf76ed\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable-animated:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\45b6cb9e6ba8eeaf85023caf84bf76ed\transformed\vectordrawable-animated-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\d5bfc44d0dcf34bd624d168118ed4362\transformed\vectordrawable-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.vectordrawable:vectordrawable:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\d5bfc44d0dcf34bd624d168118ed4362\transformed\vectordrawable-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\944ba004610118fb4d10d0ce70923611\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\944ba004610118fb4d10d0ce70923611\transformed\viewpager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\d9bfa42c8dd508af08f28ce4dd458ad1\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\d9bfa42c8dd508af08f28ce4dd458ad1\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\e9a81e1f2f57578a613074498b7c8294\transformed\loader-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\e9a81e1f2f57578a613074498b7c8294\transformed\loader-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\58799d823999413a21b283f0e4de93c8\transformed\recyclerview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.recyclerview:recyclerview:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\58799d823999413a21b283f0e4de93c8\transformed\recyclerview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0f0ae47ed50093257e713ec55dd446ad\transformed\customview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.1.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0f0ae47ed50093257e713ec55dd446ad\transformed\customview-1.1.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] C:\Users\imkal\.gradle\caches\8.9\transforms\08268d704ee774e7a2ec27e2d6ce09b8\transformed\savedstate-ktx-1.2.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] C:\Users\imkal\.gradle\caches\8.9\transforms\08268d704ee774e7a2ec27e2d6ce09b8\transformed\savedstate-ktx-1.2.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] C:\Users\imkal\.gradle\caches\8.9\transforms\0099e86bf7fff9300a565b940b94c183\transformed\savedstate-1.2.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] C:\Users\imkal\.gradle\caches\8.9\transforms\0099e86bf7fff9300a565b940b94c183\transformed\savedstate-1.2.1\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\ef2ae7c159e97d2750226b52d39f71df\transformed\lifecycle-livedata-core-ktx-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\ef2ae7c159e97d2750226b52d39f71df\transformed\lifecycle-livedata-core-ktx-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\b537776870836d7f1356ce4c59a57790\transformed\lifecycle-livedata-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\b537776870836d7f1356ce4c59a57790\transformed\lifecycle-livedata-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\66130ab68b0cd4b2edf07443e84fe79c\transformed\lifecycle-livedata-core-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\66130ab68b0cd4b2edf07443e84fe79c\transformed\lifecycle-livedata-core-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\c5f7f076655737aaa9d934b6b3bd68be\transformed\lifecycle-viewmodel-ktx-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\c5f7f076655737aaa9d934b6b3bd68be\transformed\lifecycle-viewmodel-ktx-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\542580487d26cf75dde459b65f5ad5d0\transformed\lifecycle-runtime-ktx-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\542580487d26cf75dde459b65f5ad5d0\transformed\lifecycle-runtime-ktx-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\e8e29c2d1536a37cfed332824ce9e465\transformed\lifecycle-viewmodel-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\e8e29c2d1536a37cfed332824ce9e465\transformed\lifecycle-viewmodel-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\789913fccbf7ba96c829f50dc47e3893\transformed\lifecycle-runtime-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\789913fccbf7ba96c829f50dc47e3893\transformed\lifecycle-runtime-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-service:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\2a438714565d5b4908356caffc07e112\transformed\lifecycle-service-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-service:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\2a438714565d5b4908356caffc07e112\transformed\lifecycle-service-2.7.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\abb35e24c24fef8767f0f11083940857\transformed\lifecycle-viewmodel-savedstate-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\abb35e24c24fef8767f0f11083940857\transformed\lifecycle-viewmodel-savedstate-2.7.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core-ktx:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0184d2d8b0caf185fe53f2188028f9c9\transformed\core-ktx-1.12.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.core:core-ktx:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0184d2d8b0caf185fe53f2188028f9c9\transformed\core-ktx-1.12.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\3987e90d6556cd8334404c2c55234bcf\transformed\annotation-experimental-1.3.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\3987e90d6556cd8334404c2c55234bcf\transformed\annotation-experimental-1.3.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f9455109be5adfe4582cb42890f0d0a4\transformed\cursoradapter-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.cursoradapter:cursoradapter:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f9455109be5adfe4582cb42890f0d0a4\transformed\cursoradapter-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.cardview:cardview:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0c5c85d26dbcf96e4979aa2001c08c98\transformed\cardview-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.cardview:cardview:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0c5c85d26dbcf96e4979aa2001c08c98\transformed\cardview-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\759f219460917eaeeb41bada9846dfc6\transformed\interpolator-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\759f219460917eaeeb41bada9846dfc6\transformed\interpolator-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\89333b0c7f728828f67a80f1eaca58bd\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\89333b0c7f728828f67a80f1eaca58bd\transformed\versionedparcelable-1.1.1\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.arch.core:core-runtime:2.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\a0544cb3c5f45d24ea6d23fea171b0d4\transformed\core-runtime-2.2.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\a0544cb3c5f45d24ea6d23fea171b0d4\transformed\core-runtime-2.2.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:21:5-44
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\05a79fc0a52f470ad810c986c0956ff7\transformed\tracing-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.tracing:tracing:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\05a79fc0a52f470ad810c986c0956ff7\transformed\tracing-1.0.0\AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.documentfile:documentfile:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\b9aec9c1f0944b7577d7903824d448e3\transformed\documentfile-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.documentfile:documentfile:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\b9aec9c1f0944b7577d7903824d448e3\transformed\documentfile-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0bdea243adb72925888518d77df80dec\transformed\localbroadcastmanager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.localbroadcastmanager:localbroadcastmanager:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0bdea243adb72925888518d77df80dec\transformed\localbroadcastmanager-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.print:print:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0eba3a93714dd07b6f7cd350223d1cf4\transformed\print-1.0.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.print:print:1.0.0] C:\Users\imkal\.gradle\caches\8.9\transforms\0eba3a93714dd07b6f7cd350223d1cf4\transformed\print-1.0.0\AndroidManifest.xml:20:5-44
+	android:targetSdkVersion
+		INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from C:\Users\imkal\Desktop\calling_app\android\app\src\main\AndroidManifest.xml
+provider#androidx.startup.InitializationProvider
+ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:26:9-30:34
+MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\imkal\.gradle\caches\8.9\transforms\d941579310a3fbe588c9bcd632b5c131\transformed\startup-runtime-1.1.1\AndroidManifest.xml:26:9-30:34
+	tools:node
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:28:13-31
+	android:authorities
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:26:13-68
+	android:exported
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:27:13-37
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:25:13-67
+meta-data#androidx.emoji2.text.EmojiCompatInitializer
+ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.2.0] C:\Users\imkal\.gradle\caches\8.9\transforms\4c29d42288a8add449b7f6fc21c1c356\transformed\emoji2-1.2.0\AndroidManifest.xml:30:17-75
+permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:23:9-81
+permission#com.familycall.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:23:9-81
+uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:26:22-94
+uses-permission#com.familycall.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.12.0] C:\Users\imkal\.gradle\caches\8.9\transforms\caab71ac386738837b61bd59b98bf9b7\transformed\core-1.12.0\AndroidManifest.xml:26:22-94
+meta-data#androidx.lifecycle.ProcessLifecycleInitializer
+ADDED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.lifecycle:lifecycle-process:2.7.0] C:\Users\imkal\.gradle\caches\8.9\transforms\f5e65c1de999a15a979b156cf6313030\transformed\lifecycle-process-2.7.0\AndroidManifest.xml:30:17-78
+meta-data#androidx.profileinstaller.ProfileInstallerInitializer
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:30:17-85
+receiver#androidx.profileinstaller.ProfileInstallReceiver
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:34:9-52:20
+	android:enabled
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:37:13-35
+	android:exported
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:38:13-36
+	android:permission
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:39:13-57
+	android:directBootAware
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:36:13-44
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:35:13-76
+intent-filter#action:name:androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:40:13-42:29
+action#androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:17-91
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:25-88
+intent-filter#action:name:androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:43:13-45:29
+action#androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:17-85
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:25-82
+intent-filter#action:name:androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:46:13-48:29
+action#androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:17-88
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:25-85
+intent-filter#action:name:androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:49:13-51:29
+action#androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:17-95
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\imkal\.gradle\caches\8.9\transforms\8e4042935854a36657418c300ed550ab\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:25-92

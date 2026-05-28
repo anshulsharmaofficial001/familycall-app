@@ -1,0 +1,38 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.familycall.app-mergeDebugResources-35:/values-v16/values-v16.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\imkal\\.gradle\\caches\\8.9\\transforms\\e74adb173f6bfdb6acb30e2ed635dede\\transformed\\appcompat-1.6.1\\res\\values-v16\\values-v16.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "5",
+                        "endColumns": "12",
+                        "endOffsets": "223"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "121",
+                        "endLines": "6",
+                        "endColumns": "12",
+                        "endOffsets": "289"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\imkal\\.gradle\\caches\\8.9\\transforms\\caab71ac386738837b61bd59b98bf9b7\\transformed\\core-1.12.0\\res\\values-v16\\values-v16.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "65",
+                        "endOffsets": "116"
+                    }
+                }
+            ]
+        }
+    ]
+}

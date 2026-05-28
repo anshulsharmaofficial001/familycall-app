@@ -1,0 +1,30 @@
+[
+    {
+        "merged": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-mergeDebugResources-36:\\layout\\activity_login.xml",
+        "source": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-main-39:\\layout\\activity_login.xml"
+    },
+    {
+        "merged": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-mergeDebugResources-36:\\layout\\activity_call.xml",
+        "source": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-main-39:\\layout\\activity_call.xml"
+    },
+    {
+        "merged": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-mergeDebugResources-36:\\layout\\activity_chat.xml",
+        "source": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-main-39:\\layout\\activity_chat.xml"
+    },
+    {
+        "merged": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-mergeDebugResources-36:\\layout\\activity_incoming_call.xml",
+        "source": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-main-39:\\layout\\activity_incoming_call.xml"
+    },
+    {
+        "merged": "com.familycall.app-mergeDebugResources-36:/layout/activity_chat.xml",
+        "source": "com.familycall.app-main-39:/layout/activity_chat.xml"
+    },
+    {
+        "merged": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-mergeDebugResources-36:\\layout\\item_contact.xml",
+        "source": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-main-39:\\layout\\item_contact.xml"
+    },
+    {
+        "merged": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-mergeDebugResources-36:\\layout\\activity_main.xml",
+        "source": "C:\\Users\\imkal\\.gradle\\daemon\\8.9\\com.familycall.app-main-39:\\layout\\activity_main.xml"
+    }
+]
