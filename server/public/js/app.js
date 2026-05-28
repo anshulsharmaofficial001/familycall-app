@@ -263,7 +263,10 @@ function appendChatMsg(from, text, mine) {
   const savedUser = localStorage.getItem('fc_user');
   const savedName = localStorage.getItem('fc_name');
   if (savedUser && savedName) {
-    try { connectApp(savedUser, savedName); }
-    catch(e) { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
+    try {
+      const r = await fetch(HTTP_URL + '/api/user/' + savedUser);
+      if (r.ok) { connectApp(savedUser, savedName); }
+      else { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
+    } catch(e) { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
   }
 })();
