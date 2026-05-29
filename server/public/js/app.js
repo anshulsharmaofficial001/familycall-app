@@ -175,42 +175,44 @@ function endCallUI() {
   mainPage.classList.remove('hide'); loadContacts();
 }
 
-// === Audio (PCM16 via Web Audio API) ===
+// === Audio ===
 function startAudioStream() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
   navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
     micStream = stream;
-    const src = audioCtx.createMediaStreamSource(stream);
-    const p = audioCtx.createScriptProcessor(4096, 1, 1);
-    src.connect(p);
-    const silent = audioCtx.createGain();
-    silent.gain.value = 0;
-    p.connect(silent);
-    silent.connect(audioCtx.destination);
-    p.onaudioprocess = e => {
-      if (!currentCallId) return;
-      send({type:'audio', callId:currentCallId, data: buf2b64(pcm16(e.inputBuffer.getChannelData(0)).buffer)});
-    };
-    audioRecorder = p;
-  }).catch(() => alert('Microphone access denied. Allow mic in browser settings.'));
+    // Use MediaRecorder (works on all modern browsers, especially mobile)
+    const mime = 'audio/webm;codecs=opus';
+    try {
+      const rec = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported(mime) ? mime : ''});
+      rec.ondataavailable = e => {
+        if (e.data.size > 0 && currentCallId) {
+          const r = new FileReader();
+          r.onload = () => send({type:'audio', callId:currentCallId, data: r.result.split(',')[1]});
+          r.readAsDataURL(e.data);
+        }
+      };
+      rec.start(60);
+      audioRecorder = rec;
+    } catch(e) { /* MediaRecorder not supported */ }
+  }).catch(() => alert('Microphone access denied.'));
 }
-
-function pcm16(f) { const i = new Int16Array(f.length); for(let j=0;j<f.length;j++){const s=Math.max(-1,Math.min(1,f[j]));i[j]=s<0?s*0x8000:s*0x7FFF;} return i; }
-function f32(i) { const f = new Float32Array(i.length); for(let j=0;j<i.length;j++) f[j]=i[j]/(i[j]<0?0x8000:0x7FFF); return f; }
-function buf2b64(b) { let s=''; new Uint8Array(b).forEach(v=>s+=String.fromCharCode(v)); return btoa(s); }
-function b642buf(b) { const s=atob(b),u=new Uint8Array(s.length); for(let i=0;i<s.length;i++) u[i]=s.charCodeAt(i); return u.buffer; }
 
 function playNext() {
   if (!audioQ.length || !audioCtx) { playing=false; return; }
   playing=true;
+  const b64 = audioQ.shift();
   try {
-    const buf = b642buf(audioQ.shift()), f = f32(new Int16Array(buf)), ab = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
-    ab.getChannelData(0).set(f);
-    const n = audioCtx.createBufferSource(); n.buffer = ab; n.connect(audioCtx.destination);
-    n.onended = () => playNext();
-    n.start();
-  } catch(e) { setTimeout(playNext, 100); }
+    const raw = atob(b64), u = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) u[i] = raw.charCodeAt(i);
+    const blob = new Blob([u], {type: 'audio/webm;codecs=opus'});
+    audioCtx.decodeAudioData(blob, buf => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf; src.connect(audioCtx.destination);
+      src.onended = () => playNext();
+      src.start();
+    }, () => setTimeout(playNext, 50));
+  } catch(e) { setTimeout(playNext, 50); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
