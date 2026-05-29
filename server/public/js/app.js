@@ -3,8 +3,18 @@ const WS_URL = `${WS_PROTO}//${location.host}`;
 const HTTP_URL = location.origin;
 
 let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
-let micStream = null, audioRecorder = null, audioCtx = null, audioQ = [], playing = false;
 let myUsername = '', myName = '', chatTarget = '', refreshInterval = null;
+
+// Audio state
+let audioCtx = null;
+let micStream = null;
+let scriptProcessor = null;
+let playbackScheduleTime = 0;
+let isMuted = false;
+
+const SAMPLE_RATE = 16000;   // 16kHz — works on all devices
+const CHUNK_MS   = 40;       // 40ms chunks
+const BUFFER_AHEAD = 0.06;   // schedule 60ms ahead
 
 // DOM refs
 const $ = id => document.getElementById(id);
@@ -81,7 +91,6 @@ function handleMsg(msg) {
       break;
     case 'call_accepted':
       $('callStatusText').textContent = 'Connected';
-      console.log('Call accepted, audioCtx state:', audioCtx?.state);
       startAudioStream();
       break;
     case 'call_rejected':
@@ -92,16 +101,14 @@ function handleMsg(msg) {
       break;
     case 'audio':
       if (currentCallId === msg.callId && msg.data) {
-        console.log('Audio recv, mime:', msg.mime, 'size:', msg.data.length);
-        playAudio(msg.mime, msg.data);
+        receiveAudio(msg.data);
       }
       break;
     case 'chat':
       appendChatMsg(msg.from, msg.text, false);
       loadChatContacts();
       break;
-    case 'chat_sent':
-      break;
+    case 'chat_sent': break;
     case 'error': alert(msg.message); break;
   }
 }
@@ -129,33 +136,32 @@ $('callUserBtn').onclick = () => {
   const u = $('searchUser').value.trim().toLowerCase();
   if (u) startCall(u, u);
 };
-
 $('searchUser').onkeydown = e => { if (e.key === 'Enter') $('callUserBtn').click(); };
 
 // === Call ===
 function startCall(username, name) {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  ensureAudioCtx();
   $('callDisplayName').textContent = name;
   $('callStatusText').textContent = 'Calling...';
   callingPage.classList.remove('hide'); mainPage.classList.add('hide');
-  currentCallId = 'calling_' + Date.now();
   send({type:'call', calleeUsername: username});
   startCallTimer();
 }
 
-$('callEndBtn').onclick = () => { if (currentCallId) send({type:'end_call', callId: currentCallId}); endCallUI(); };
+$('callEndBtn').onclick = () => {
+  if (currentCallId) send({type:'end_call', callId: currentCallId});
+  endCallUI();
+};
 
 $('acceptBtn').onclick = () => {
   if (currentCallId && ws) {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    console.log('Accept clicked, audioCtx state:', audioCtx.state);
+    ensureAudioCtx();
     send({type:'accept_call', callId: currentCallId});
     $('callDisplayName').textContent = $('incomingName').textContent;
     $('callStatusText').textContent = 'Connected';
     incomingPage.classList.add('hide'); callingPage.classList.remove('hide');
-    startCallTimer(); startAudioStream();
+    startCallTimer();
+    startAudioStream();
   }
 };
 
@@ -166,95 +172,169 @@ $('declineBtn').onclick = () => {
 };
 
 $('muteBtn').onclick = function() {
-  if (micStream) {
-    const en = !micStream.getAudioTracks()[0].enabled;
-    micStream.getAudioTracks()[0].enabled = en;
-    this.style.opacity = en ? '1' : '0.4';
-  }
+  isMuted = !isMuted;
+  this.style.opacity = isMuted ? '0.4' : '1';
+  this.textContent = isMuted ? '🔇' : '🎙️';
 };
 
 function endCallUI() {
-  cleanupAudio(); currentCallId = null;
+  stopAudioStream();
+  currentCallId = null;
   callingPage.classList.add('hide'); incomingPage.classList.add('hide');
-  mainPage.classList.remove('hide'); loadContacts();
+  mainPage.classList.remove('hide');
+  loadContacts();
 }
 
-// === Audio (MediaRecorder send, AudioContext decode+play) ===
-function getAudioMime() {
-  if (typeof MediaRecorder === 'undefined') return '';
-  for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']) {
-    if (MediaRecorder.isTypeSupported(t)) return t;
+// === AudioContext ===
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
   }
-  return '';
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  playbackScheduleTime = audioCtx.currentTime + 0.1;
 }
 
-function startAudioStream() {
-  const mime = getAudioMime();
-  if (!mime) { alert('Audio recording not supported'); return; }
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// === Audio Capture & Send (PCM16 via ScriptProcessorNode) ===
+async function startAudioStream() {
+  ensureAudioCtx();
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: SAMPLE_RATE,
+        channelCount: 1
+      }
+    });
+  } catch(e) {
+    alert('Microphone access denied: ' + e.message);
+    return;
+  }
+
+  const source = audioCtx.createMediaStreamSource(micStream);
+
+  // ScriptProcessorNode: bufferSize = sampleRate * chunkMs / 1000
+  const bufSize = nextPow2(Math.round(SAMPLE_RATE * CHUNK_MS / 1000)); // 512 or 1024
+  scriptProcessor = audioCtx.createScriptProcessor(bufSize, 1, 1);
+
+  scriptProcessor.onaudioprocess = (e) => {
+    if (isMuted || !currentCallId) return;
+    const float32 = e.inputBuffer.getChannelData(0);
+    const pcm16 = floatToPCM16(float32);
+    const b64 = arrayBufferToBase64(pcm16.buffer);
+    send({ type: 'audio', callId: currentCallId, data: b64 });
+  };
+
+  // Must connect to destination (silent gain) so mobile doesn't kill it
+  const silentGain = audioCtx.createGain();
+  silentGain.gain.value = 0;
+  source.connect(scriptProcessor);
+  scriptProcessor.connect(silentGain);
+  silentGain.connect(audioCtx.destination);
+}
+
+function stopAudioStream() {
+  if (scriptProcessor) {
+    try { scriptProcessor.disconnect(); } catch(e) {}
+    scriptProcessor = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  isMuted = false;
+  $('muteBtn').style.opacity = '1';
+  $('muteBtn').textContent = '🔇';
+}
+
+// === Audio Playback (scheduled PCM16 → AudioBuffer) ===
+function receiveAudio(b64) {
+  if (!audioCtx) return;
   if (audioCtx.state === 'suspended') audioCtx.resume();
 
-  navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
-    micStream = stream;
-    console.log('Mic granted, starting MediaRecorder with', mime);
-    const mr = new MediaRecorder(stream, { mimeType: mime });
-    mr.ondataavailable = e => {
-      if (e.data.size > 0 && currentCallId) {
-        e.data.arrayBuffer().then(buf => {
-          const u = new Uint8Array(buf);
-          let s = '';
-          for (let j = 0; j < u.length; j++) s += String.fromCharCode(u[j]);
-          send({type:'audio', callId:currentCallId, mime: mr.mimeType, data: btoa(s)});
-        });
-      }
-    };
-    mr.start(100);
-    audioRecorder = mr;
-    console.log('MediaRecorder started');
-  }).catch(e => { console.log('Mic error:', e); alert('Microphone access denied.'); });
+  const raw = base64ToArrayBuffer(b64);
+  const int16 = new Int16Array(raw);
+  const float32 = pcm16ToFloat(int16);
+
+  const audioBuffer = audioCtx.createBuffer(1, float32.length, SAMPLE_RATE);
+  audioBuffer.copyToChannel(float32, 0);
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(audioCtx.destination);
+
+  // Scheduled playback — no gaps, no overlap
+  const now = audioCtx.currentTime;
+  if (playbackScheduleTime < now + 0.01) {
+    playbackScheduleTime = now + 0.05; // reset if we fell behind
+  }
+  source.start(playbackScheduleTime);
+  playbackScheduleTime += audioBuffer.duration;
 }
 
-let audioNextTimer = null;
-
-function playAudio(mime, data) {
-  if (audioQ.length > 20) return;
-  audioQ.push({mime, data});
-  if (!playing) playNext();
+// === PCM16 helpers ===
+function floatToPCM16(float32) {
+  const int16 = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  return int16;
 }
 
-function playNext() {
-  if (!audioQ.length || !audioCtx) { playing = false; return; }
-  if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('AudioCtx resumed'); }
-  playing = true;
-  const item = audioQ.shift();
-  try {
-    const d = atob(item.data);
-    const u = new Uint8Array(d.length);
-    for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
-    const blob = new Blob([u.buffer.slice(0, u.length)], { type: item.mime || 'audio/webm' });
-    blob.arrayBuffer().then(ab => {
-      audioCtx.decodeAudioData(ab, buf => {
-        const n = audioCtx.createBufferSource();
-        n.buffer = buf;
-        n.connect(audioCtx.destination);
-        n.start();
-        if (audioNextTimer) clearTimeout(audioNextTimer);
-        audioNextTimer = setTimeout(playNext, 0);
-      }, () => {
-        console.log('decodeAudioData failed for mime:', item.mime);
-        if (audioNextTimer) clearTimeout(audioNextTimer);
-        audioNextTimer = setTimeout(playNext, 50);
-      });
-    }).catch(() => { playing = false; setTimeout(playNext, 100); });
-  } catch(e) { console.log('playNext error:', e); playing = false; setTimeout(playNext, 100); }
+function pcm16ToFloat(int16) {
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) {
+    float32[i] = int16[i] / (int16[i] < 0 ? 0x8000 : 0x7FFF);
+  }
+  return float32;
 }
 
-function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
-function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioNextTimer)clearTimeout(audioNextTimer); if(audioRecorder&&audioRecorder.state!=='inactive')try{audioRecorder.stop()}catch(e){} if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(refreshInterval)clearInterval(refreshInterval); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+function base64ToArrayBuffer(b64) {
+  const s = atob(b64);
+  const buf = new ArrayBuffer(s.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i);
+  return buf;
+}
+
+function nextPow2(n) {
+  let p = 256;
+  while (p < n) p *= 2;
+  return Math.min(p, 4096);
+}
+
+// === Timer ===
+function startCallTimer() {
+  seconds = 0;
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    seconds++;
+    $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+  }, 1000);
+}
 
 // === Tabs ===
-$('tabContacts').onclick = function() { $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active'); $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide'); loadContacts(); };
-$('tabChat').onclick = function() { $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active'); $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide'); loadChatContacts(); };
+$('tabContacts').onclick = function() {
+  $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active');
+  $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide');
+  loadContacts();
+};
+$('tabChat').onclick = function() {
+  $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active');
+  $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide');
+  loadChatContacts();
+};
 
 // === Chat ===
 function loadChatContacts() {
@@ -292,7 +372,6 @@ $('chatSendBtn').onclick = () => {
   appendChatMsg(myUsername, t, true);
   $('chatInput').value = '';
 };
-
 $('chatInput').onkeydown = e => { if (e.key === 'Enter') $('chatSendBtn').click(); };
 
 function appendChatMsg(from, text, mine) {
