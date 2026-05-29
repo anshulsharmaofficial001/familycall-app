@@ -175,7 +175,7 @@ function handleMessage(ws, msg, username, name) {
       const otherKey = call.callerUsername === username ? call.calleeUsername : call.callerUsername;
       const other = users[otherKey];
       if (other && other.ws && other.ws.readyState === WebSocket.OPEN) {
-        other.ws.send(JSON.stringify({ type: 'audio', callId: msg.callId, data: msg.data }));
+        other.ws.send(JSON.stringify({ type: 'audio', callId: msg.callId, mime: msg.mime, data: msg.data }));
       }
       break;
     }

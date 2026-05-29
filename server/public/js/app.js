@@ -92,8 +92,8 @@ function handleMsg(msg) {
       break;
     case 'audio':
       if (currentCallId === msg.callId && msg.data) {
-        console.log('Audio recv, size:', msg.data.length);
-        playAudio(msg.data);
+        console.log('Audio recv, mime:', msg.mime, 'size:', msg.data.length);
+        playAudio(msg.mime, msg.data);
       }
       break;
     case 'chat':
@@ -204,7 +204,7 @@ function startAudioStream() {
           const u = new Uint8Array(buf);
           let s = '';
           for (let j = 0; j < u.length; j++) s += String.fromCharCode(u[j]);
-          send({type:'audio', callId:currentCallId, data: btoa(s)});
+          send({type:'audio', callId:currentCallId, mime: mr.mimeType, data: btoa(s)});
         });
       }
     };
@@ -214,9 +214,11 @@ function startAudioStream() {
   }).catch(e => { console.log('Mic error:', e); alert('Microphone access denied.'); });
 }
 
-function playAudio(data) {
+let audioNextTimer = null;
+
+function playAudio(mime, data) {
   if (audioQ.length > 20) return;
-  audioQ.push(data);
+  audioQ.push({mime, data});
   if (!playing) playNext();
 }
 
@@ -224,24 +226,31 @@ function playNext() {
   if (!audioQ.length || !audioCtx) { playing = false; return; }
   if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('AudioCtx resumed'); }
   playing = true;
-  const raw = audioQ.shift();
+  const item = audioQ.shift();
   try {
-    const d = atob(raw);
+    const d = atob(item.data);
     const u = new Uint8Array(d.length);
     for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
-    const ab = u.buffer.slice(0, u.length);
-    audioCtx.decodeAudioData(ab, buf => {
-      const n = audioCtx.createBufferSource();
-      n.buffer = buf;
-      n.connect(audioCtx.destination);
-      n.onended = playNext;
-      n.start();
-    }, () => { console.log('decodeAudioData failed'); playing = false; setTimeout(playNext, 100); });
+    const blob = new Blob([u.buffer.slice(0, u.length)], { type: item.mime || 'audio/webm' });
+    blob.arrayBuffer().then(ab => {
+      audioCtx.decodeAudioData(ab, buf => {
+        const n = audioCtx.createBufferSource();
+        n.buffer = buf;
+        n.connect(audioCtx.destination);
+        n.start();
+        if (audioNextTimer) clearTimeout(audioNextTimer);
+        audioNextTimer = setTimeout(playNext, 0);
+      }, () => {
+        console.log('decodeAudioData failed for mime:', item.mime);
+        if (audioNextTimer) clearTimeout(audioNextTimer);
+        audioNextTimer = setTimeout(playNext, 50);
+      });
+    }).catch(() => { playing = false; setTimeout(playNext, 100); });
   } catch(e) { console.log('playNext error:', e); playing = false; setTimeout(playNext, 100); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
-function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioRecorder&&audioRecorder.state!=='inactive')try{audioRecorder.stop()}catch(e){} if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(refreshInterval)clearInterval(refreshInterval); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
+function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioNextTimer)clearTimeout(audioNextTimer); if(audioRecorder&&audioRecorder.state!=='inactive')try{audioRecorder.stop()}catch(e){} if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(refreshInterval)clearInterval(refreshInterval); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
 
 // === Tabs ===
 $('tabContacts').onclick = function() { $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active'); $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide'); loadContacts(); };
