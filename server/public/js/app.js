@@ -91,8 +91,8 @@ function handleMsg(msg) {
       endCallUI();
       break;
     case 'audio':
-        if (currentCallId === msg.callId && msg.data) { if (audioQ.length < 50) audioQ.push(msg.data); if (!playing) playNext(); }
-        break;
+      if (currentCallId === msg.callId && msg.data) playAudio(msg.data);
+      break;
     case 'chat':
       appendChatMsg(msg.from, msg.text, false);
       loadChatContacts();
@@ -175,54 +175,68 @@ function endCallUI() {
   mainPage.classList.remove('hide'); loadContacts();
 }
 
-// === Audio (PCM16 only) ===
+// === Audio (MediaRecorder for send, Audio element for play) ===
+let audioPlayer = null;
+
+function getAudioMime() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
 function startAudioStream() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const mime = getAudioMime();
+  if (!mime) { alert('Audio recording not supported in this browser'); return; }
+
+  if (!audioPlayer) {
+    audioPlayer = new Audio();
+    audioPlayer.volume = 1;
+  }
+
   navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
     micStream = stream;
-    const src = audioCtx.createMediaStreamSource(stream);
-    const p = audioCtx.createScriptProcessor(4096, 1, 1);
-    src.connect(p);
-    const g = audioCtx.createGain(); g.gain.value = 0;
-    p.connect(g); g.connect(audioCtx.destination);
-    p.onaudioprocess = e => {
-      if (!currentCallId) return;
-      const d = e.inputBuffer.getChannelData(0);
-      const i16 = new Int16Array(d.length);
-      for (let j = 0; j < d.length; j++) { const s = Math.max(-1, Math.min(1, d[j])); i16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
-      const u = new Uint8Array(i16.buffer);
-      let s = '';
-      for (let j = 0; j < u.length; j++) s += String.fromCharCode(u[j]);
-      send({type:'audio', callId:currentCallId, data: btoa(s)});
+    const mr = new MediaRecorder(stream, { mimeType: mime });
+    mr.ondataavailable = e => {
+      if (e.data.size > 0 && currentCallId) {
+        e.data.arrayBuffer().then(buf => {
+          const u = new Uint8Array(buf);
+          let s = '';
+          for (let j = 0; j < u.length; j++) s += String.fromCharCode(u[j]);
+          send({type:'audio', callId:currentCallId, data: btoa(s)});
+        });
+      }
     };
-    audioRecorder = p;
+    mr.start(100);
+    audioRecorder = mr;
   }).catch(() => alert('Microphone access denied.'));
 }
 
+function playAudio(data) {
+  if (audioQ.length > 20) return;
+  audioQ.push(data);
+  if (!playing) playNext();
+}
+
 function playNext() {
-  if (!audioQ.length || !audioCtx) { playing = false; return; }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (!audioQ.length || !audioPlayer) { playing = false; return; }
   playing = true;
   try {
-    const d = atob(audioQ.shift());
+    const raw = audioQ.shift();
+    const d = atob(raw);
     const u = new Uint8Array(d.length);
     for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
-    const ab = u.buffer.slice(0, u.length);
-    const i16 = new Int16Array(ab);
-    const f = new Float32Array(i16.length);
-    for (let j = 0; j < i16.length; j++) f[j] = i16[j] / (i16[j] < 0 ? 0x8000 : 0x7FFF);
-    const buf = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
-    buf.getChannelData(0).set(f);
-    const n = audioCtx.createBufferSource();
-    n.buffer = buf; n.connect(audioCtx.destination);
-    n.onended = playNext;
-    n.start();
+    const blob = new Blob([u.buffer], { type: 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    audioPlayer.src = url;
+    audioPlayer.onended = () => { URL.revokeObjectURL(url); playNext(); };
+    audioPlayer.play().catch(() => { URL.revokeObjectURL(url); playing = false; setTimeout(playNext, 100); });
   } catch(e) { playing = false; setTimeout(playNext, 100); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
-function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioRecorder)try{audioRecorder.disconnect()}catch(e){} if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(refreshInterval)clearInterval(refreshInterval); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
+function cleanupAudio() { if(timerInterval)clearInterval(timerInterval);timerInterval=null; if(audioRecorder&&audioRecorder.state!=='inactive')try{audioRecorder.stop()}catch(e){} if(micStream)micStream.getTracks().forEach(t=>t.stop()); if(refreshInterval)clearInterval(refreshInterval); audioRecorder=null; micStream=null; audioQ=[]; playing=false; }
 
 // === Tabs ===
 $('tabContacts').onclick = function() { $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active'); $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide'); loadContacts(); };
