@@ -202,13 +202,13 @@ function startAudioStream() {
 
 function playNext() {
   if (!audioQ.length || !audioCtx) { playing = false; return; }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   playing = true;
   try {
     const d = atob(audioQ.shift());
     const u = new Uint8Array(d.length);
     for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
-    const ab = new ArrayBuffer(u.length);
-    new Uint8Array(ab).set(u);
+    const ab = u.buffer.slice(0, u.length);
     const i16 = new Int16Array(ab);
     const f = new Float32Array(i16.length);
     for (let j = 0; j < i16.length; j++) f[j] = i16[j] / (i16[j] < 0 ? 0x8000 : 0x7FFF);
@@ -216,9 +216,9 @@ function playNext() {
     buf.getChannelData(0).set(f);
     const n = audioCtx.createBufferSource();
     n.buffer = buf; n.connect(audioCtx.destination);
-    n.onended = () => setTimeout(playNext, 0);
+    n.onended = playNext;
     n.start();
-  } catch(e) { setTimeout(playNext, 50); }
+  } catch(e) { playing = false; setTimeout(playNext, 100); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
