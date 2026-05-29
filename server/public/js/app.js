@@ -8,15 +8,15 @@ let myUsername = '', myName = '', chatTarget = '', refreshInterval = null;
 // Audio state
 let audioCtx = null;
 let micStream = null;
-let scriptProcessor = null;
-let playbackScheduleTime = 0;
+let mediaRecorder = null;
+let audioStreamStarted = false;
 let isMuted = false;
-let audioStreamStarted = false; // prevent double-start
 
-const SAMPLE_RATE = 16000;
-const CHUNK_MS   = 40;
+// Playback queue
+let playQueue = [];
+let isPlaying = false;
+let playbackCtx = null; // separate context for playback to avoid suspend issues
 
-// DOM refs
 const $ = id => document.getElementById(id);
 
 // === Auth ===
@@ -38,8 +38,7 @@ $('loginBtn').onclick = () => {
   $('loginBtn').textContent = 'Signing in...';
   $('loginBtn').disabled = true;
   fetch(HTTP_URL + '/api/login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({username: u, password: p})
   })
   .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Login failed'); }); return r.json(); })
@@ -48,11 +47,7 @@ $('loginBtn').onclick = () => {
     localStorage.setItem('fc_name', r.user.name);
     connectApp(r.user.username, r.user.name);
   })
-  .catch(e => {
-    $('loginBtn').textContent = 'Sign In';
-    $('loginBtn').disabled = false;
-    alert(e.message || 'Connection error');
-  });
+  .catch(e => { $('loginBtn').textContent = 'Sign In'; $('loginBtn').disabled = false; alert(e.message || 'Connection error'); });
 };
 
 $('regBtn').onclick = () => {
@@ -64,8 +59,7 @@ $('regBtn').onclick = () => {
   $('regBtn').textContent = 'Creating...';
   $('regBtn').disabled = true;
   fetch(HTTP_URL + '/api/register', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({username: u, name: n, password: p})
   })
   .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Registration failed'); }); return r.json(); })
@@ -74,11 +68,7 @@ $('regBtn').onclick = () => {
     localStorage.setItem('fc_name', n);
     connectApp(u, n);
   })
-  .catch(e => {
-    $('regBtn').textContent = 'Create Account';
-    $('regBtn').disabled = false;
-    alert(e.message || 'Connection error');
-  });
+  .catch(e => { $('regBtn').textContent = 'Create Account'; $('regBtn').disabled = false; alert(e.message || 'Connection error'); });
 };
 
 $('logoutBtn').onclick = () => {
@@ -87,40 +77,28 @@ $('logoutBtn').onclick = () => {
   if (ws) ws.close();
   $('mainPage').classList.add('hide');
   $('loginPage').classList.remove('hide');
-  $('loginUser').value = '';
-  $('loginPass').value = '';
+  $('loginUser').value = ''; $('loginPass').value = '';
 };
 
 // === WebSocket ===
 function connectApp(username, name) {
-  myUsername = username;
-  myName = name;
-  $('myName').textContent = name;
-  $('myUser').textContent = username;
+  myUsername = username; myName = name;
+  $('myName').textContent = name; $('myUser').textContent = username;
   $('loginPage').classList.add('hide');
   $('registerPage').classList.add('hide');
   $('mainPage').classList.remove('hide');
 
   const url = `${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`;
   ws = new WebSocket(url);
-  ws.onopen = () => {
-    loadContacts();
-    refreshInterval = setInterval(loadContacts, 5000);
-  };
+  ws.onopen = () => { loadContacts(); refreshInterval = setInterval(loadContacts, 5000); };
   ws.onmessage = e => handleMsg(JSON.parse(e.data));
-  ws.onclose = () => {
-    if (refreshInterval) clearInterval(refreshInterval);
-    setTimeout(() => location.reload(), 2000);
-  };
+  ws.onclose = () => { if (refreshInterval) clearInterval(refreshInterval); setTimeout(() => location.reload(), 2000); };
 }
 
 function handleMsg(msg) {
   switch (msg.type) {
     case 'welcome': break;
-
-    case 'pending_messages':
-      loadChatContacts();
-      break;
+    case 'pending_messages': loadChatContacts(); break;
 
     case 'incoming_call':
       if (currentCallId) { send({type: 'reject_call', callId: msg.callId}); return; }
@@ -132,24 +110,21 @@ function handleMsg(msg) {
       break;
 
     case 'call_created':
-      // Caller: server confirmed call, now start audio
       currentCallId = msg.callId;
       $('callStatusText').textContent = 'Ringing...';
       $('callTimer').classList.add('hide');
-      startAudioStream(); // caller starts mic immediately
+      // Caller: start sending audio right away
+      startAudioStream();
       break;
 
     case 'call_accepted':
-      // Caller: callee picked up
       $('callStatusText').textContent = 'Connected';
       $('callTimer').classList.remove('hide');
       startCallTimer();
-      // audio already running from call_created, no need to restart
       break;
 
     case 'call_rejected':
-      endCallUI();
-      alert('Call was declined');
+      endCallUI(); alert('Call was declined');
       break;
 
     case 'call_ended':
@@ -158,7 +133,7 @@ function handleMsg(msg) {
 
     case 'audio':
       if (currentCallId === msg.callId && msg.data) {
-        receiveAudio(msg.data);
+        enqueueAudio(msg.mime, msg.data);
       }
       break;
 
@@ -181,7 +156,6 @@ async function loadContacts() {
   const users = await fetch(HTTP_URL + '/api/users').then(r => r.json());
   const others = users.filter(u => u.username !== myUsername);
   const list = $('contactsList');
-
   if (others.length === 0) {
     list.innerHTML = '';
     $('noContacts').classList.remove('hide');
@@ -215,7 +189,7 @@ $('searchUser').onkeydown = e => { if (e.key === 'Enter') $('callUserBtn').click
 
 // === Call ===
 function startCall(username, name) {
-  ensureAudioCtx();
+  initPlaybackCtx(); // must be from user gesture
   $('callDisplayName').textContent = name;
   $('callAvatarLetter').textContent = name.charAt(0).toUpperCase();
   $('callStatusText').textContent = 'Calling...';
@@ -234,7 +208,7 @@ $('callEndBtn').onclick = () => {
 
 $('acceptBtn').onclick = () => {
   if (!currentCallId || !ws) return;
-  ensureAudioCtx();
+  initPlaybackCtx(); // must be from user gesture
   send({type: 'accept_call', callId: currentCallId});
   $('callDisplayName').textContent = $('incomingName').textContent;
   $('callAvatarLetter').textContent = $('incomingName').textContent.charAt(0).toUpperCase();
@@ -244,7 +218,7 @@ $('acceptBtn').onclick = () => {
   $('callingPage').classList.remove('hide');
   startCallTimer();
   audioStreamStarted = false;
-  startAudioStream(); // callee starts mic on accept
+  startAudioStream(); // callee starts mic
 };
 
 $('declineBtn').onclick = () => {
@@ -254,15 +228,17 @@ $('declineBtn').onclick = () => {
   $('mainPage').classList.remove('hide');
 };
 
-// Mute button
 $('muteBtn').onclick = function() {
   isMuted = !isMuted;
+  if (mediaRecorder) {
+    if (isMuted && mediaRecorder.state === 'recording') mediaRecorder.pause();
+    else if (!isMuted && mediaRecorder.state === 'paused') mediaRecorder.resume();
+  }
   this.querySelector('.ctrl-btn-circle').textContent = isMuted ? '🔇' : '🎙️';
   this.querySelector('span').textContent = isMuted ? 'Unmute' : 'Mute';
   this.classList.toggle('active', isMuted);
 };
 
-// Speaker button (visual only on web — browser handles output)
 $('speakerBtn').onclick = function() {
   this.classList.toggle('active');
 };
@@ -276,21 +252,34 @@ function endCallUI() {
   loadContacts();
 }
 
-// === AudioContext ===
-function ensureAudioCtx() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: SAMPLE_RATE});
+// === Playback AudioContext (created from user gesture) ===
+function initPlaybackCtx() {
+  if (!playbackCtx) {
+    playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  playbackScheduleTime = audioCtx.currentTime + 0.15;
+  if (playbackCtx.state === 'suspended') playbackCtx.resume();
 }
 
-// === Audio Capture (PCM16 via ScriptProcessorNode) ===
-async function startAudioStream() {
-  if (audioStreamStarted) return; // prevent double-start
-  audioStreamStarted = true;
+// === Audio Capture: MediaRecorder → base64 → WebSocket ===
+// Works on ALL devices (mobile Chrome, Safari, desktop Chrome/Firefox)
+function getBestMime() {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+    ''
+  ];
+  for (const t of types) {
+    if (t === '' || (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t))) return t;
+  }
+  return '';
+}
 
-  ensureAudioCtx();
+async function startAudioStream() {
+  if (audioStreamStarted) return;
+  audioStreamStarted = true;
 
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -298,7 +287,6 @@ async function startAudioStream() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        sampleRate: SAMPLE_RATE,
         channelCount: 1
       }
     });
@@ -308,107 +296,88 @@ async function startAudioStream() {
     return;
   }
 
-  const source = audioCtx.createMediaStreamSource(micStream);
-  const bufSize = nextPow2(Math.round(SAMPLE_RATE * CHUNK_MS / 1000)); // 512 or 1024
+  const mime = getBestMime();
+  const options = mime ? {mimeType: mime} : {};
 
-  scriptProcessor = audioCtx.createScriptProcessor(bufSize, 1, 1);
-  scriptProcessor.onaudioprocess = (e) => {
-    if (isMuted || !currentCallId) return;
-    const float32 = e.inputBuffer.getChannelData(0);
-    const pcm16 = floatToPCM16(float32);
-    const b64 = arrayBufferToBase64(pcm16.buffer);
-    send({type: 'audio', callId: currentCallId, data: b64});
+  try {
+    mediaRecorder = new MediaRecorder(micStream, options);
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(micStream);
+  }
+
+  const actualMime = mediaRecorder.mimeType || mime || 'audio/webm';
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0 && currentCallId && !isMuted) {
+      e.data.arrayBuffer().then(buf => {
+        const bytes = new Uint8Array(buf);
+        let s = '';
+        for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+        send({type: 'audio', callId: currentCallId, mime: actualMime, data: btoa(s)});
+      });
+    }
   };
 
-  // Connect to silent gain so mobile Chrome doesn't kill ScriptProcessor
-  const silentGain = audioCtx.createGain();
-  silentGain.gain.value = 0;
-  source.connect(scriptProcessor);
-  scriptProcessor.connect(silentGain);
-  silentGain.connect(audioCtx.destination);
+  mediaRecorder.start(60); // 60ms chunks — small enough for low latency
 }
 
 function stopAudioStream() {
   audioStreamStarted = false;
-  if (scriptProcessor) {
-    try { scriptProcessor.disconnect(); } catch(e) {}
-    scriptProcessor = null;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch(e) {}
   }
-  if (micStream) {
-    micStream.getTracks().forEach(t => t.stop());
-    micStream = null;
-  }
+  mediaRecorder = null;
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  playQueue = []; isPlaying = false;
   isMuted = false;
-  const muteBtn = $('muteBtn');
-  if (muteBtn) {
-    muteBtn.querySelector('.ctrl-btn-circle').textContent = '🎙️';
-    muteBtn.querySelector('span').textContent = 'Mute';
-    muteBtn.classList.remove('active');
+  const mb = $('muteBtn');
+  if (mb) { mb.querySelector('.ctrl-btn-circle').textContent = '🎙️'; mb.querySelector('span').textContent = 'Mute'; mb.classList.remove('active'); }
+}
+
+// === Audio Playback: queue + decodeAudioData ===
+// Key fix: we pass the SENDER's mime type to decodeAudioData
+// This solves phone→laptop (mp4) and laptop→phone (webm) mismatch
+
+function enqueueAudio(mime, b64) {
+  playQueue.push({mime, b64});
+  if (!isPlaying) drainQueue();
+}
+
+function drainQueue() {
+  if (!playQueue.length) { isPlaying = false; return; }
+  if (!playbackCtx) { isPlaying = false; return; }
+  if (playbackCtx.state === 'suspended') {
+    playbackCtx.resume().then(drainQueue);
+    return;
   }
-}
 
-// === Audio Playback (scheduled PCM16 → AudioBuffer) ===
-function receiveAudio(b64) {
-  if (!audioCtx) return;
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  isPlaying = true;
+  const item = playQueue.shift();
 
-  const raw = base64ToArrayBuffer(b64);
-  const int16 = new Int16Array(raw);
-  const float32 = pcm16ToFloat(int16);
+  // Decode the raw bytes
+  let buf;
+  try {
+    const s = atob(item.b64);
+    buf = new ArrayBuffer(s.length);
+    const view = new Uint8Array(buf);
+    for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i);
+  } catch(e) { drainQueue(); return; }
 
-  const audioBuffer = audioCtx.createBuffer(1, float32.length, SAMPLE_RATE);
-  audioBuffer.copyToChannel(float32, 0);
-
-  const source = audioCtx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(audioCtx.destination);
-
-  const now = audioCtx.currentTime;
-  if (playbackScheduleTime < now + 0.01) {
-    playbackScheduleTime = now + 0.05;
-  }
-  source.start(playbackScheduleTime);
-  playbackScheduleTime += audioBuffer.duration;
-}
-
-// === PCM16 helpers ===
-function floatToPCM16(float32) {
-  const int16 = new Int16Array(float32.length);
-  for (let i = 0; i < float32.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32[i]));
-    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-  return int16;
-}
-
-function pcm16ToFloat(int16) {
-  const float32 = new Float32Array(int16.length);
-  for (let i = 0; i < int16.length; i++) {
-    float32[i] = int16[i] / (int16[i] < 0 ? 0x8000 : 0x7FFF);
-  }
-  return float32;
-}
-
-function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let s = '';
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s);
-}
-
-function base64ToArrayBuffer(b64) {
-  const s = atob(b64);
-  const buf = new ArrayBuffer(s.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i);
-  return buf;
-}
-
-function nextPow2(n) {
-  let p = 256;
-  while (p < n) p *= 2;
-  return Math.min(p, 4096);
+  playbackCtx.decodeAudioData(
+    buf,
+    (decoded) => {
+      const src = playbackCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(playbackCtx.destination);
+      src.onended = () => drainQueue();
+      src.start(0);
+    },
+    () => {
+      // decode failed — skip this chunk and continue
+      drainQueue();
+    }
+  );
 }
 
 // === Timer ===
@@ -424,17 +393,13 @@ function startCallTimer() {
 
 // === Tabs ===
 $('tabContacts').onclick = function() {
-  $('tabContacts').classList.add('active');
-  $('tabChat').classList.remove('active');
-  $('contactsView').classList.remove('hide');
-  $('chatView').classList.add('hide');
+  $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active');
+  $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide');
   loadContacts();
 };
 $('tabChat').onclick = function() {
-  $('tabChat').classList.add('active');
-  $('tabContacts').classList.remove('active');
-  $('contactsView').classList.add('hide');
-  $('chatView').classList.remove('hide');
+  $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active');
+  $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide');
   loadChatContacts();
 };
 
@@ -504,9 +469,6 @@ function appendChatMsg(from, text, mine) {
       const r = await fetch(HTTP_URL + '/api/user/' + savedUser);
       if (r.ok) { connectApp(savedUser, savedName); }
       else { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
-    } catch(e) {
-      localStorage.removeItem('fc_user');
-      localStorage.removeItem('fc_name');
-    }
+    } catch(e) { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
   }
 })();
