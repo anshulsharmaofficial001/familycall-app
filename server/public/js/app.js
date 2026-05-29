@@ -205,14 +205,26 @@ function playNext() {
   try {
     const raw = atob(b64), u = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) u[i] = raw.charCodeAt(i);
-    const blob = new Blob([u], {type: 'audio/webm;codecs=opus'});
-    audioCtx.decodeAudioData(blob, buf => {
+    audioCtx.decodeAudioData(u.buffer, buf => {
       const src = audioCtx.createBufferSource();
       src.buffer = buf; src.connect(audioCtx.destination);
       src.onended = () => playNext();
       src.start();
-    }, () => setTimeout(playNext, 50));
+    }, () => { try { playPCM16(u); } catch(e) { setTimeout(playNext, 50); } });
   } catch(e) { setTimeout(playNext, 50); }
+}
+
+function playPCM16(u) {
+  const ab = u.buffer.slice(0, u.length);
+  const i16 = new Int16Array(ab);
+  const f = new Float32Array(i16.length);
+  for (let j = 0; j < i16.length; j++) f[j] = i16[j] / (i16[j] < 0 ? 0x8000 : 0x7FFF);
+  const buf = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
+  buf.getChannelData(0).set(f);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf; src.connect(audioCtx.destination);
+  src.onended = () => playNext();
+  src.start();
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
