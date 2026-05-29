@@ -175,74 +175,49 @@ function endCallUI() {
   mainPage.classList.remove('hide'); loadContacts();
 }
 
-// === Audio (PCM16 + MediaRecorder fallback) ===
+// === Audio (PCM16 only) ===
 function startAudioStream() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
   navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
     micStream = stream;
-    let spsFired = false;
-    // Primary: ScriptProcessorNode (PCM16 - works on desktop)
-    try {
-      const src = audioCtx.createMediaStreamSource(stream);
-      const proc = audioCtx.createScriptProcessor(4096, 1, 1);
-      src.connect(proc);
-      const silent = audioCtx.createGain(); silent.gain.value = 0;
-      proc.connect(silent); silent.connect(audioCtx.destination);
-      proc.onaudioprocess = e => {
-        spsFired = true;
-        if (!currentCallId) return;
-        const d = e.inputBuffer.getChannelData(0), i16 = new Int16Array(d.length);
-        for (let j = 0; j < d.length; j++) { const s = Math.max(-1, Math.min(1, d[j])); i16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
-        let b64 = ''; new Uint8Array(i16.buffer).forEach(v => b64 += String.fromCharCode(v));
-        send({type:'audio', callId:currentCallId, data: btoa(b64)});
-      };
-      audioRecorder = proc;
-    } catch(e) { spsFired = true; } // Mark as fired so fallback doesn't start
-    
-    // Fallback: MediaRecorder if ScriptProcessorNode doesn't fire on mobile
-    setTimeout(() => {
-      if (!spsFired) {
-        try {
-          const mime = 'audio/webm;codecs=opus';
-          const rec = new MediaRecorder(stream, {mimeType: MediaRecorder.isTypeSupported(mime) ? mime : ''});
-          rec.ondataavailable = e => {
-            if (e.data.size > 0 && currentCallId) {
-              const r = new FileReader();
-              r.onload = () => send({type:'audio', callId:currentCallId, data: r.result.split(',')[1]});
-              r.readAsDataURL(e.data);
-            }
-          };
-          rec.start(60);
-          if (audioRecorder && audioRecorder.disconnect) audioRecorder.disconnect();
-          audioRecorder = rec;
-        } catch(e2) {}
-      }
-    }, 1500);
-  }).catch(() => alert('Microphone access denied. Allow mic in settings.'));
+    const src = audioCtx.createMediaStreamSource(stream);
+    const p = audioCtx.createScriptProcessor(4096, 1, 1);
+    src.connect(p);
+    const g = audioCtx.createGain(); g.gain.value = 0;
+    p.connect(g); g.connect(audioCtx.destination);
+    p.onaudioprocess = e => {
+      if (!currentCallId) return;
+      const d = e.inputBuffer.getChannelData(0);
+      const i16 = new Int16Array(d.length);
+      for (let j = 0; j < d.length; j++) { const s = Math.max(-1, Math.min(1, d[j])); i16[j] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
+      const u = new Uint8Array(i16.buffer);
+      let s = '';
+      for (let j = 0; j < u.length; j++) s += String.fromCharCode(u[j]);
+      send({type:'audio', callId:currentCallId, data: btoa(s)});
+    };
+    audioRecorder = p;
+  }).catch(() => alert('Microphone access denied.'));
 }
 
 function playNext() {
   if (!audioQ.length || !audioCtx) { playing = false; return; }
   playing = true;
   try {
-    const d = atob(audioQ.shift()), u = new Uint8Array(d.length);
+    const d = atob(audioQ.shift());
+    const u = new Uint8Array(d.length);
     for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
     const ab = new ArrayBuffer(u.length);
     new Uint8Array(ab).set(u);
-    audioCtx.decodeAudioData(ab, buf => {
-      const n = audioCtx.createBufferSource(); n.buffer = buf; n.connect(audioCtx.destination);
-      n.onended = () => setTimeout(playNext, 0); n.start();
-    }, () => {
-      try {
-        const i16 = new Int16Array(ab), f = new Float32Array(i16.length);
-        for (let j = 0; j < i16.length; j++) f[j] = i16[j] / (i16[j] < 0 ? 0x8000 : 0x7FFF);
-        const buf = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
-        buf.getChannelData(0).set(f);
-        const n = audioCtx.createBufferSource(); n.buffer = buf; n.connect(audioCtx.destination);
-        n.onended = () => setTimeout(playNext, 0); n.start();
-      } catch(e2) { setTimeout(playNext, 50); }
-    });
+    const i16 = new Int16Array(ab);
+    const f = new Float32Array(i16.length);
+    for (let j = 0; j < i16.length; j++) f[j] = i16[j] / (i16[j] < 0 ? 0x8000 : 0x7FFF);
+    const buf = audioCtx.createBuffer(1, f.length, audioCtx.sampleRate);
+    buf.getChannelData(0).set(f);
+    const n = audioCtx.createBufferSource();
+    n.buffer = buf; n.connect(audioCtx.destination);
+    n.onended = () => setTimeout(playNext, 0);
+    n.start();
   } catch(e) { setTimeout(playNext, 50); }
 }
 
