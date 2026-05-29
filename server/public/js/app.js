@@ -81,7 +81,7 @@ function handleMsg(msg) {
       break;
     case 'call_accepted':
       $('callStatusText').textContent = 'Connected';
-      console.log('Call accepted, starting audio stream...');
+      console.log('Call accepted, audioCtx state:', audioCtx?.state);
       startAudioStream();
       break;
     case 'call_rejected':
@@ -91,7 +91,10 @@ function handleMsg(msg) {
       endCallUI();
       break;
     case 'audio':
-      if (currentCallId === msg.callId && msg.data) playAudio(msg.data);
+      if (currentCallId === msg.callId && msg.data) {
+        console.log('Audio recv, size:', msg.data.length);
+        playAudio(msg.data);
+      }
       break;
     case 'chat':
       appendChatMsg(msg.from, msg.text, false);
@@ -147,6 +150,7 @@ $('acceptBtn').onclick = () => {
   if (currentCallId && ws) {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
+    console.log('Accept clicked, audioCtx state:', audioCtx.state);
     send({type:'accept_call', callId: currentCallId});
     $('callDisplayName').textContent = $('incomingName').textContent;
     $('callStatusText').textContent = 'Connected';
@@ -186,10 +190,13 @@ function getAudioMime() {
 
 function startAudioStream() {
   const mime = getAudioMime();
-  if (!mime) { alert('Audio recording not supported in this browser'); return; }
+  if (!mime) { alert('Audio recording not supported'); return; }
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
 
   navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
     micStream = stream;
+    console.log('Mic granted, starting MediaRecorder with', mime);
     const mr = new MediaRecorder(stream, { mimeType: mime });
     mr.ondataavailable = e => {
       if (e.data.size > 0 && currentCallId) {
@@ -203,7 +210,8 @@ function startAudioStream() {
     };
     mr.start(100);
     audioRecorder = mr;
-  }).catch(() => alert('Microphone access denied.'));
+    console.log('MediaRecorder started');
+  }).catch(e => { console.log('Mic error:', e); alert('Microphone access denied.'); });
 }
 
 function playAudio(data) {
@@ -214,10 +222,10 @@ function playAudio(data) {
 
 function playNext() {
   if (!audioQ.length || !audioCtx) { playing = false; return; }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state === 'suspended') { audioCtx.resume(); console.log('AudioCtx resumed'); }
   playing = true;
+  const raw = audioQ.shift();
   try {
-    const raw = audioQ.shift();
     const d = atob(raw);
     const u = new Uint8Array(d.length);
     for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
@@ -228,8 +236,8 @@ function playNext() {
       n.connect(audioCtx.destination);
       n.onended = playNext;
       n.start();
-    }, () => { playing = false; setTimeout(playNext, 100); });
-  } catch(e) { playing = false; setTimeout(playNext, 100); }
+    }, () => { console.log('decodeAudioData failed'); playing = false; setTimeout(playNext, 100); });
+  } catch(e) { console.log('playNext error:', e); playing = false; setTimeout(playNext, 100); }
 }
 
 function startCallTimer() { seconds = 0; if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { seconds++; $('callTimer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }, 1000); }
