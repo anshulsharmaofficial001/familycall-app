@@ -175,9 +175,7 @@ function endCallUI() {
   mainPage.classList.remove('hide'); loadContacts();
 }
 
-// === Audio (MediaRecorder for send, Audio element for play) ===
-let audioPlayer = null;
-
+// === Audio (MediaRecorder send, AudioContext decode+play) ===
 function getAudioMime() {
   if (typeof MediaRecorder === 'undefined') return '';
   for (const t of ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']) {
@@ -189,11 +187,6 @@ function getAudioMime() {
 function startAudioStream() {
   const mime = getAudioMime();
   if (!mime) { alert('Audio recording not supported in this browser'); return; }
-
-  if (!audioPlayer) {
-    audioPlayer = new Audio();
-    audioPlayer.volume = 1;
-  }
 
   navigator.mediaDevices.getUserMedia({audio: true, echoCancellation: true, noiseSuppression: true}).then(stream => {
     micStream = stream;
@@ -220,18 +213,22 @@ function playAudio(data) {
 }
 
 function playNext() {
-  if (!audioQ.length || !audioPlayer) { playing = false; return; }
+  if (!audioQ.length || !audioCtx) { playing = false; return; }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   playing = true;
   try {
     const raw = audioQ.shift();
     const d = atob(raw);
     const u = new Uint8Array(d.length);
     for (let i = 0; i < d.length; i++) u[i] = d.charCodeAt(i);
-    const blob = new Blob([u.buffer], { type: 'audio/webm' });
-    const url = URL.createObjectURL(blob);
-    audioPlayer.src = url;
-    audioPlayer.onended = () => { URL.revokeObjectURL(url); playNext(); };
-    audioPlayer.play().catch(() => { URL.revokeObjectURL(url); playing = false; setTimeout(playNext, 100); });
+    const ab = u.buffer.slice(0, u.length);
+    audioCtx.decodeAudioData(ab, buf => {
+      const n = audioCtx.createBufferSource();
+      n.buffer = buf;
+      n.connect(audioCtx.destination);
+      n.onended = playNext;
+      n.start();
+    }, () => { playing = false; setTimeout(playNext, 100); });
   } catch(e) { playing = false; setTimeout(playNext, 100); }
 }
 
