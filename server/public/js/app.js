@@ -7,28 +7,31 @@ let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
 let myUsername = '', myName = '', chatTarget = '', refreshInterval = null;
 
 /* ── Audio ── */
-let micStream        = null;
-let mediaRecorder    = null;
-let audioStarted     = false;
-let isMuted          = false;
+let micStream     = null;
+let audioStarted  = false;
+let isMuted       = false;
 
-/* Playback */
-let mimeForPlayback  = '';
-let blobQueue = [], blobPlaying = false;
+/* Capture via AudioContext → PCM16 (no MediaRecorder, no codec issues) */
+let captureCtx    = null;
+let captureSource = null;
+let captureProc   = null;
+
+/* Playback via AudioContext → scheduled PCM16 */
+let playCtx       = null;
+let playNextTime  = 0;
 
 /* Ring */
 let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
 
 const $ = id => document.getElementById(id);
 
-/* ── Server-side logger ── */
+/* ── Logger ── */
 function slog(event, data) {
   if (!myUsername) return;
   fetch(`${HTTP_URL}/api/log`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({ username: myUsername, event, data })
-  }).catch(() => {});
+  }).catch(()=>{});
 }
 
 /* ═══════════════════════════════════════════
@@ -38,24 +41,24 @@ $('showRegister').onclick = e => { e.preventDefault(); $('loginPage').classList.
 $('showLogin').onclick    = e => { e.preventDefault(); $('registerPage').classList.add('hide'); $('loginPage').classList.remove('hide'); };
 
 $('loginBtn').onclick = () => {
-  const u = $('loginUser').value.trim().toLowerCase(), p = $('loginPass').value;
-  if (!u || !p) return alert('Enter username and password');
-  $('loginBtn').textContent = 'Signing in…'; $('loginBtn').disabled = true;
-  fetch(`${HTTP_URL}/api/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u,password:p}) })
-    .then(r => r.ok ? r.json() : r.json().then(e=>{throw new Error(e.error||'Login failed');}))
-    .then(r => { localStorage.setItem('fc_user',r.user.username); localStorage.setItem('fc_name',r.user.name); connectApp(r.user.username,r.user.name); })
-    .catch(e => { $('loginBtn').textContent='Sign In'; $('loginBtn').disabled=false; alert(e.message); });
+  const u=$('loginUser').value.trim().toLowerCase(), p=$('loginPass').value;
+  if (!u||!p) return alert('Enter username and password');
+  $('loginBtn').textContent='Signing in…'; $('loginBtn').disabled=true;
+  fetch(`${HTTP_URL}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+    .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Login failed');}))
+    .then(r=>{localStorage.setItem('fc_user',r.user.username);localStorage.setItem('fc_name',r.user.name);connectApp(r.user.username,r.user.name);})
+    .catch(e=>{$('loginBtn').textContent='Sign In';$('loginBtn').disabled=false;alert(e.message);});
 };
 
 $('regBtn').onclick = () => {
-  const u=$('regUser').value.trim().toLowerCase(), n=$('regName').value.trim(), p=$('regPass').value;
+  const u=$('regUser').value.trim().toLowerCase(),n=$('regName').value.trim(),p=$('regPass').value;
   if (!u||!n||!p) return alert('Fill all fields');
   if (u.includes(' ')) return alert('No spaces in username');
   $('regBtn').textContent='Creating…'; $('regBtn').disabled=true;
   fetch(`${HTTP_URL}/api/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,name:n,password:p})})
-    .then(r => r.ok ? r.json() : r.json().then(e=>{throw new Error(e.error||'Registration failed');}))
-    .then(()=>{ localStorage.setItem('fc_user',u); localStorage.setItem('fc_name',n); connectApp(u,n); })
-    .catch(e=>{ $('regBtn').textContent='Create Account'; $('regBtn').disabled=false; alert(e.message); });
+    .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Registration failed');}))
+    .then(()=>{localStorage.setItem('fc_user',u);localStorage.setItem('fc_name',n);connectApp(u,n);})
+    .catch(e=>{$('regBtn').textContent='Create Account';$('regBtn').disabled=false;alert(e.message);});
 };
 
 $('logoutBtn').onclick = () => {
@@ -72,10 +75,10 @@ function connectApp(username, name) {
   myUsername=username; myName=name;
   $('myName').textContent=name; $('myUser').textContent=username;
   $('loginPage').classList.add('hide'); $('registerPage').classList.add('hide'); $('mainPage').classList.remove('hide');
-  ws = new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
-  ws.onopen  = () => { loadContacts(); refreshInterval=setInterval(loadContacts,5000); };
-  ws.onmessage = e => handleMsg(JSON.parse(e.data));
-  ws.onclose = () => { if(refreshInterval)clearInterval(refreshInterval); setTimeout(()=>location.reload(),2000); };
+  ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
+  ws.onopen=()=>{loadContacts();refreshInterval=setInterval(loadContacts,5000);};
+  ws.onmessage=e=>handleMsg(JSON.parse(e.data));
+  ws.onclose=()=>{if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
 }
 
 function handleMsg(msg) {
@@ -84,25 +87,25 @@ function handleMsg(msg) {
     case 'pending_messages': loadChatContacts(); break;
 
     case 'incoming_call':
-      if (currentCallId) { send({type:'reject_call',callId:msg.callId}); return; }
-      currentCallId = msg.callId;
-      $('incomingName').textContent = msg.callerName;
-      $('incomingAvatarLetter').textContent = msg.callerName.charAt(0).toUpperCase();
+      if (currentCallId){send({type:'reject_call',callId:msg.callId});return;}
+      currentCallId=msg.callId;
+      $('incomingName').textContent=msg.callerName;
+      $('incomingAvatarLetter').textContent=msg.callerName.charAt(0).toUpperCase();
       $('incomingPage').classList.remove('hide');
       $('mainPage').classList.add('hide');
       startRing();
       break;
 
     case 'call_created':
-      currentCallId = msg.callId;
-      $('callStatusText').textContent = 'Ringing…';
+      currentCallId=msg.callId;
+      $('callStatusText').textContent='Ringing…';
       $('callTimer').classList.add('hide');
       startCapture();
       break;
 
     case 'call_accepted':
       stopRing();
-      $('callStatusText').textContent = 'Connected';
+      $('callStatusText').textContent='Connected';
       $('callTimer').classList.remove('hide');
       startCallTimer();
       break;
@@ -116,8 +119,7 @@ function handleMsg(msg) {
       break;
 
     case 'audio':
-      if (currentCallId === msg.callId && msg.data)
-        playChunk(msg.mime, msg.data);
+      if (currentCallId===msg.callId && msg.data) receiveAudio(msg.data);
       break;
 
     case 'chat':
@@ -128,26 +130,26 @@ function handleMsg(msg) {
   }
 }
 
-function send(obj) { if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+function send(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
 /* ═══════════════════════════════════════════
    RING
 ═══════════════════════════════════════════ */
-function startRing() {
-  if (ringing) return; ringing=true;
-  try {
-    ringCtx  = new (window.AudioContext||window.webkitAudioContext)();
-    ringGain = ringCtx.createGain(); ringGain.gain.value=0.35; ringGain.connect(ringCtx.destination);
+function startRing(){
+  if(ringing)return; ringing=true;
+  try{
+    ringCtx=new(window.AudioContext||window.webkitAudioContext)();
+    ringGain=ringCtx.createGain();ringGain.gain.value=0.3;ringGain.connect(ringCtx.destination);
     let hi=true;
     (function pulse(){
       if(!ringing)return;
-      ringOsc=ringCtx.createOscillator(); ringOsc.type='sine'; ringOsc.frequency.value=hi?480:420;
-      ringOsc.connect(ringGain); ringOsc.start(); ringOsc.stop(ringCtx.currentTime+0.35);
-      ringOsc.onended=()=>{hi=!hi; if(ringing)setTimeout(pulse,180);};
+      ringOsc=ringCtx.createOscillator();ringOsc.type='sine';ringOsc.frequency.value=hi?480:420;
+      ringOsc.connect(ringGain);ringOsc.start();ringOsc.stop(ringCtx.currentTime+0.35);
+      ringOsc.onended=()=>{hi=!hi;if(ringing)setTimeout(pulse,180);};
     })();
-  } catch(e){}
+  }catch(e){}
 }
-function stopRing() {
+function stopRing(){
   ringing=false;
   try{if(ringOsc){ringOsc.onended=null;ringOsc.stop();}}catch(e){}
   try{if(ringGain)ringGain.disconnect();}catch(e){}
@@ -156,193 +158,138 @@ function stopRing() {
 }
 
 /* ═══════════════════════════════════════════
-   CAPTURE  (MediaRecorder → base64 → WS)
+   CAPTURE — AudioContext ScriptProcessor → PCM16 → base64
+   
+   Why this works on ALL devices:
+   - No MediaRecorder, no codec, no MIME type
+   - Raw PCM16 samples — universally decodable
+   - ScriptProcessor connected to silent gain node so mobile doesn't kill it
 ═══════════════════════════════════════════ */
-function getBestMime() {
-  if (typeof MediaRecorder==='undefined') return '';
-  for (const t of ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4',''])
-    if (!t||MediaRecorder.isTypeSupported(t)) return t;
-  return '';
-}
+const SAMPLE_RATE = 16000;
+const PROC_BUFFER = 4096; // ~256ms per chunk at 16kHz
 
-async function startCapture() {
-  if (audioStarted) return;
-  audioStarted = true;
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 }
+async function startCapture(){
+  if(audioStarted)return;
+  audioStarted=true;
+
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}
     });
-  } catch(e) { alert('Mic denied: '+e.message); audioStarted=false; slog('mic_denied',{err:e.message}); return; }
+  }catch(e){
+    alert('Mic denied: '+e.message);
+    audioStarted=false;
+    slog('mic_denied',{err:e.message});
+    return;
+  }
 
-  const mime = getBestMime();
-  slog('mic_ok', { mime, ua: navigator.userAgent.substring(0,80) });
+  // Create AudioContext at device native rate, then downsample to 16kHz
+  captureCtx=new(window.AudioContext||window.webkitAudioContext)();
+  const nativeRate=captureCtx.sampleRate;
+  slog('capture_start',{nativeRate,ua:navigator.userAgent.substring(0,60)});
 
-  try { mediaRecorder = mime ? new MediaRecorder(micStream,{mimeType:mime}) : new MediaRecorder(micStream); }
-  catch(e) { mediaRecorder = new MediaRecorder(micStream); }
+  captureSource=captureCtx.createMediaStreamSource(micStream);
 
-  const actualMime = mediaRecorder.mimeType || mime || 'audio/webm';
-  slog('recorder_start', { actualMime });
+  // ScriptProcessor: bufferSize must be power of 2
+  captureProc=captureCtx.createScriptProcessor(PROC_BUFFER,1,1);
 
-  let chunkCount = 0;
-  mediaRecorder.ondataavailable = e => {
-    if (!e.data||e.data.size<50||!currentCallId||isMuted) return;
-    chunkCount++;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const b64 = reader.result.split(',')[1];
-      if (b64) {
-        if (chunkCount <= 3 || chunkCount % 20 === 0)
-          slog('chunk_sent', { n: chunkCount, size: e.data.size, mime: actualMime });
-        send({type:'audio', callId:currentCallId, mime:actualMime, data:b64});
-      }
-    };
-    reader.readAsDataURL(e.data);
+  captureProc.onaudioprocess=e=>{
+    if(isMuted||!currentCallId)return;
+    const input=e.inputBuffer.getChannelData(0); // Float32 at nativeRate
+    // Downsample to 16kHz
+    const ratio=nativeRate/SAMPLE_RATE;
+    const outLen=Math.floor(input.length/ratio);
+    const pcm=new Int16Array(outLen);
+    for(let i=0;i<outLen;i++){
+      const s=Math.max(-1,Math.min(1,input[Math.floor(i*ratio)]));
+      pcm[i]=s<0?s*0x8000:s*0x7FFF;
+    }
+    // base64 encode
+    const bytes=new Uint8Array(pcm.buffer);
+    let bin='';
+    for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+    send({type:'audio',callId:currentCallId,data:btoa(bin)});
   };
-  mediaRecorder.start(100);
+
+  // MUST connect to destination (via silent gain) or mobile Chrome kills the node
+  const silentGain=captureCtx.createGain();
+  silentGain.gain.value=0;
+  captureSource.connect(captureProc);
+  captureProc.connect(silentGain);
+  silentGain.connect(captureCtx.destination);
 }
 
-function stopCapture() {
+function stopCapture(){
   audioStarted=false;
-  if (mediaRecorder&&mediaRecorder.state!=='inactive') try{mediaRecorder.stop();}catch(e){}
-  mediaRecorder=null;
-  if (micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
+  try{if(captureProc)captureProc.disconnect();}catch(e){}
+  try{if(captureSource)captureSource.disconnect();}catch(e){}
+  try{if(captureCtx)captureCtx.close();}catch(e){}
+  captureProc=null;captureSource=null;captureCtx=null;
+  if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
 }
 
 /* ═══════════════════════════════════════════
-   PLAYBACK — MSE streaming (correct approach for WebM chunks)
-   Phone sends WebM chunks → laptop plays via MediaSource
+   PLAYBACK — PCM16 base64 → AudioContext scheduled play
+   
+   Why this works on ALL devices:
+   - No decodeAudioData, no codec, no MIME
+   - Raw PCM16 → Float32 → AudioBuffer → play
+   - Scheduled so no gaps or overlaps
 ═══════════════════════════════════════════ */
-let rxCount = 0;
-let msAudio = null;      // <audio> element
-let ms = null;           // MediaSource
-let sb = null;           // SourceBuffer
-let sbPending = [];      // ArrayBuffer queue for SourceBuffer
-let msReady = false;
-let msInitMime = '';
-
-function initMSE(mime) {
-  // Normalize mime for MSE
-  let mseMime = 'audio/webm;codecs=opus';
-  if (mime && mime.includes('mp4')) mseMime = 'audio/mp4;codecs="mp4a.40.2"';
-  else if (mime && mime.includes('ogg')) mseMime = 'audio/ogg;codecs=opus';
-
-  msInitMime = mseMime;
-
-  if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported(mseMime)) {
-    slog('mse_not_supported', { mime: mseMime });
-    return false;
+function ensurePlayCtx(){
+  if(!playCtx||playCtx.state==='closed'){
+    playCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+    playNextTime=0;
+    slog('playctx_created',{state:playCtx.state});
   }
-
-  msAudio = document.createElement('audio');
-  msAudio.autoplay = true;
-  msAudio.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
-  document.body.appendChild(msAudio);
-
-  ms = new MediaSource();
-  msAudio.src = URL.createObjectURL(ms);
-
-  ms.addEventListener('sourceopen', () => {
-    try {
-      sb = ms.addSourceBuffer(mseMime);
-      sb.mode = 'sequence';
-      sb.addEventListener('updateend', flushSB);
-      msReady = true;
-      slog('mse_ready', { mime: mseMime });
-      flushSB(); // flush any queued chunks
-    } catch(e) {
-      slog('mse_sb_fail', { err: e.message });
-      cleanupMSE();
-    }
-  });
-
-  ms.addEventListener('sourceended', () => { msReady = false; });
-  ms.addEventListener('sourceclose', () => { msReady = false; });
-
-  return true;
-}
-
-function flushSB() {
-  if (!sb || sb.updating || !sbPending.length) return;
-  try {
-    sb.appendBuffer(sbPending.shift());
-  } catch(e) {
-    slog('sb_append_fail', { err: e.message });
-    // If quota exceeded, remove old buffered data
-    if (e.name === 'QuotaExceededError' && sb.buffered.length > 0) {
-      try { sb.remove(0, sb.buffered.start(0) + 5); } catch(e2) {}
-    } else {
-      sbPending = [];
-    }
+  if(playCtx.state==='suspended'){
+    playCtx.resume().then(()=>slog('playctx_resumed',{}));
   }
 }
 
-function cleanupMSE() {
-  msReady = false;
-  try { if(ms && ms.readyState === 'open') ms.endOfStream(); } catch(e) {}
-  try { if(msAudio) { msAudio.pause(); URL.revokeObjectURL(msAudio.src); msAudio.remove(); } } catch(e) {}
-  ms = null; sb = null; msAudio = null; sbPending = []; msInitMime = '';
+function receiveAudio(b64){
+  ensurePlayCtx();
+  if(!playCtx||playCtx.state==='closed')return;
+
+  // base64 → Int16Array
+  let pcm;
+  try{
+    const bin=atob(b64);
+    const buf=new ArrayBuffer(bin.length);
+    const view=new Uint8Array(buf);
+    for(let i=0;i<bin.length;i++)view[i]=bin.charCodeAt(i);
+    pcm=new Int16Array(buf);
+  }catch(e){slog('rx_b64_fail',{err:e.message});return;}
+
+  // Int16 → Float32
+  const f32=new Float32Array(pcm.length);
+  for(let i=0;i<pcm.length;i++)f32[i]=pcm[i]/(pcm[i]<0?0x8000:0x7FFF);
+
+  // Create AudioBuffer and schedule
+  const ab=playCtx.createBuffer(1,f32.length,SAMPLE_RATE);
+  ab.copyToChannel(f32,0);
+
+  const src=playCtx.createBufferSource();
+  src.buffer=ab;
+  src.connect(playCtx.destination);
+
+  const now=playCtx.currentTime;
+  // If we've fallen behind (e.g. tab was hidden), reset
+  if(playNextTime<now+0.01)playNextTime=now+0.05;
+  src.start(playNextTime);
+  playNextTime+=ab.duration;
 }
 
-function playChunk(mime, b64) {
-  rxCount++;
-
-  // Decode base64 → ArrayBuffer
-  let ab;
-  try {
-    const s = atob(b64);
-    ab = new ArrayBuffer(s.length);
-    const v = new Uint8Array(ab);
-    for (let i = 0; i < s.length; i++) v[i] = s.charCodeAt(i);
-  } catch(e) { slog('b64_fail', { err: e.message }); return; }
-
-  // Init MSE on first chunk
-  if (!ms && !msInitMime) {
-    const ok = initMSE(mime);
-    if (!ok) {
-      // MSE not supported — fallback to blob
-      blobPlay(mime, ab);
-      return;
-    }
-  }
-
-  if (msReady && sb && !sb.updating) {
-    sbPending.push(ab);
-    flushSB();
-  } else if (ms) {
-    // MSE initializing — queue it
-    if (sbPending.length < 30) sbPending.push(ab);
-  } else {
-    blobPlay(mime, ab);
-  }
-}
-
-/* Blob fallback (for browsers without MSE) */
-function blobPlay(mime, ab) {
-  blobQueue.push({ mime: mime || 'audio/webm', ab });
-  if (!blobPlaying) nextBlob();
-}
-
-function nextBlob() {
-  if (!blobQueue.length) { blobPlaying = false; return; }
-  blobPlaying = true;
-  const item = blobQueue.shift();
-  const blob = new Blob([item.ab], { type: item.mime });
-  const url = URL.createObjectURL(blob);
-  const a = new Audio(url);
-  a.onended = () => { URL.revokeObjectURL(url); nextBlob(); };
-  a.onerror = () => { URL.revokeObjectURL(url); nextBlob(); };
-  a.play().catch(() => { URL.revokeObjectURL(url); nextBlob(); });
-}
-
-function cleanupPlayback() {
-  cleanupMSE();
-  blobQueue = []; blobPlaying = false; rxCount = 0; mimeForPlayback = '';
+function cleanupPlayback(){
+  try{if(playCtx)playCtx.close();}catch(e){}
+  playCtx=null;playNextTime=0;
 }
 
 /* ═══════════════════════════════════════════
    CALL UI
 ═══════════════════════════════════════════ */
-function startCall(username, name) {
+function startCall(username,name){
+  ensurePlayCtx(); // create from user gesture
   $('callDisplayName').textContent=name;
   $('callAvatarLetter').textContent=name.charAt(0).toUpperCase();
   $('callStatusText').textContent='Calling…';
@@ -354,14 +301,15 @@ function startCall(username, name) {
   startCallTimer();
 }
 
-$('callEndBtn').onclick = () => {
-  if (currentCallId) send({type:'end_call',callId:currentCallId});
+$('callEndBtn').onclick=()=>{
+  if(currentCallId)send({type:'end_call',callId:currentCallId});
   endCallUI();
 };
 
-$('acceptBtn').onclick = () => {
-  if (!currentCallId||!ws) return;
+$('acceptBtn').onclick=()=>{
+  if(!currentCallId||!ws)return;
   stopRing();
+  ensurePlayCtx(); // create from user gesture
   send({type:'accept_call',callId:currentCallId});
   $('callDisplayName').textContent=$('incomingName').textContent;
   $('callAvatarLetter').textContent=$('incomingName').textContent.charAt(0).toUpperCase();
@@ -374,19 +322,16 @@ $('acceptBtn').onclick = () => {
   startCapture();
 };
 
-$('declineBtn').onclick = () => {
+$('declineBtn').onclick=()=>{
   stopRing();
-  if (currentCallId) send({type:'reject_call',callId:currentCallId});
+  if(currentCallId)send({type:'reject_call',callId:currentCallId});
   currentCallId=null;
   $('incomingPage').classList.add('hide');
   $('mainPage').classList.remove('hide');
 };
 
-$('muteBtn').onclick = function(){
+$('muteBtn').onclick=function(){
   isMuted=!isMuted;
-  if(mediaRecorder){
-    try{ isMuted&&mediaRecorder.state==='recording'?mediaRecorder.pause():!isMuted&&mediaRecorder.state==='paused'?mediaRecorder.resume():null; }catch(e){}
-  }
   this.querySelector('.ctrl-btn-circle').textContent=isMuted?'🔇':'🎙️';
   this.querySelector('span').textContent=isMuted?'Unmute':'Mute';
   this.classList.toggle('active',isMuted);
@@ -394,7 +339,7 @@ $('muteBtn').onclick = function(){
 
 $('speakerBtn').onclick=function(){this.classList.toggle('active');};
 
-function endCallUI() {
+function endCallUI(){
   stopCapture();
   cleanupPlayback();
   currentCallId=null;
@@ -412,8 +357,11 @@ function endCallUI() {
    TIMER
 ═══════════════════════════════════════════ */
 function startCallTimer(){
-  seconds=0; if(timerInterval)clearInterval(timerInterval);
-  timerInterval=setInterval(()=>{seconds++;$('callTimer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;},1000);
+  seconds=0;if(timerInterval)clearInterval(timerInterval);
+  timerInterval=setInterval(()=>{
+    seconds++;
+    $('callTimer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+  },1000);
 }
 
 /* ═══════════════════════════════════════════
@@ -497,7 +445,10 @@ function appendChatMsg(from,text,mine){
 (async()=>{
   const u=localStorage.getItem('fc_user'),n=localStorage.getItem('fc_name');
   if(u&&n){
-    try{const r=await fetch(`${HTTP_URL}/api/user/${u}`);if(r.ok)connectApp(u,n);else{localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}}
-    catch(e){localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
+    try{
+      const r=await fetch(`${HTTP_URL}/api/user/${u}`);
+      if(r.ok)connectApp(u,n);
+      else{localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
+    }catch(e){localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
   }
 })();
