@@ -1,3 +1,4 @@
+const fs = require('fs');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -17,8 +18,15 @@ app.use((req, res, next) => {
   next(); 
 });
 
-// Serve app.js directly as a route to bypass CDN cache
-app.get('/js/app.js', (req, res) => {
+// Emergency update endpoint - writes new app.js content
+app.post('/api/update-client', (req, res) => {
+  const { secret, content } = req.body;
+  if (secret !== 'fc_update_2024') return res.status(403).json({ error: 'forbidden' });
+  if (!content) return res.status(400).json({ error: 'no content' });
+  const filePath = path.join(__dirname, 'public', 'js', 'app.js');
+  fs.writeFileSync(filePath, content, 'utf8');
+  res.json({ success: true, size: content.length });
+});
   res.set('Content-Type', 'application/javascript');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'js', 'app.js'));
