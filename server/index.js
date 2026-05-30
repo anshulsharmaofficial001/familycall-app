@@ -10,23 +10,14 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use((req, res, next) => { 
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next(); 
+app.use(express.json({ limit: '5mb' }));
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  next();
 });
 
-// Emergency update endpoint - writes new app.js content
-app.post('/api/update-client', (req, res) => {
-  const { secret, content } = req.body;
-  if (secret !== 'fc_update_2024') return res.status(403).json({ error: 'forbidden' });
-  if (!content) return res.status(400).json({ error: 'no content' });
-  const filePath = path.join(__dirname, 'public', 'js', 'app.js');
-  fs.writeFileSync(filePath, content, 'utf8');
-  res.json({ success: true, size: content.length });
-});
+// Serve app.js directly (bypass CDN cache)
+app.get('/js/app.js', (req, res) => {
   res.set('Content-Type', 'application/javascript');
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'js', 'app.js'));
@@ -37,7 +28,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const users = {};
 const calls = {};
 const messages = {};
-const logs = [];   // in-memory log store
+const logs = [];
 
 function addLog(username, event, data) {
   const entry = { ts: new Date().toISOString(), username, event, data };
@@ -53,11 +44,6 @@ function addMsg(from, to, text) {
   messages[key].push(msg);
   if (messages[key].length > 100) messages[key].shift();
   return msg;
-}
-
-function getMsgs(user1, user2) {
-  const key = [user1, user2].sort().join(':');
-  return messages[key] || [];
 }
 
 app.post('/api/register', (req, res) => {
@@ -105,38 +91,39 @@ app.get('/api/messages/:username', (req, res) => {
   res.json(result);
 });
 
+app.post('/api/log', (req, res) => {
+  const { username, event, data } = req.body;
+  addLog(username || 'unknown', event || 'client', data);
+  res.json({ ok: true });
+});
+
+app.get('/api/logs/text', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(logs.slice(-200).map(l =>
+    `${l.ts} [${l.username}] ${l.event} ${l.data ? JSON.stringify(l.data) : ''}`
+  ).join('\n'));
+});
+
+app.get('/api/reset', (req, res) => {
+  Object.keys(users).forEach(k => delete users[k]);
+  Object.keys(calls).forEach(k => delete calls[k]);
+  Object.keys(messages).forEach(k => delete messages[k]);
+  res.json({ success: true, message: 'All data cleared' });
+});
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const username = (url.searchParams.get('username') || '').toLowerCase();
   const name = url.searchParams.get('name');
 
   if (!username || !name) { ws.close(); return; }
-
   if (!users[username]) { ws.close(); return; }
-  users[username].ws = ws; users[username].online = true;
 
+  users[username].ws = ws;
+  users[username].online = true;
   console.log(`${name} (@${username}) connected`);
 
   ws.send(JSON.stringify({ type: 'welcome', username, name }));
-
-  // Send undelivered messages
-  const myMsgs = {};
-  for (const key of Object.keys(messages)) {
-    if (key.includes(username)) {
-      const [a, b] = key.split(':');
-      const other = a === username ? b : a;
-      if (messages[key].some(m => m.to === username)) {
-        if (!myMsgs[other]) myMsgs[other] = [];
-        const pending = messages[key].filter(m => m.to === username);
-        // Mark as delivered
-        pending.forEach(m => m.to = username + '_delivered');
-        myMsgs[other].push(...pending);
-      }
-    }
-  }
-  if (Object.keys(myMsgs).length > 0) {
-    ws.send(JSON.stringify({ type: 'pending_messages', messages: myMsgs }));
-  }
 
   // Forward pending calls
   for (const [cid, call] of Object.entries(calls)) {
@@ -200,12 +187,11 @@ function handleMessage(ws, msg, username, name) {
     }
     case 'audio': {
       const call = calls[msg.callId];
-      if (!call) { addLog(username, 'audio_no_call', { callId: msg.callId }); return; }
+      if (!call) return;
       const otherKey = call.callerUsername === username ? call.calleeUsername : call.callerUsername;
       const other = users[otherKey];
-      addLog(username, 'audio_relay', { mime: msg.mime, size: msg.data ? msg.data.length : 0, to: otherKey, otherOnline: !!(other && other.ws && other.ws.readyState === WebSocket.OPEN) });
       if (other && other.ws && other.ws.readyState === WebSocket.OPEN) {
-        other.ws.send(JSON.stringify({ type: 'audio', callId: msg.callId, mime: msg.mime, data: msg.data }));
+        other.ws.send(JSON.stringify({ type: 'audio', callId: msg.callId, data: msg.data }));
       }
       break;
     }
@@ -220,44 +206,13 @@ function handleMessage(ws, msg, username, name) {
       }
       break;
     }
-    case 'ice_candidate': {
-      const call = calls[msg.callId];
-      if (!call) return;
-      const otherKey = call.callerUsername === username ? call.calleeUsername : call.callerUsername;
-      const other = users[otherKey];
-      if (other && other.ws) other.ws.send(JSON.stringify({ type: 'ice_candidate', callId: msg.callId, candidate: msg.candidate }));
-      break;
-    }
   }
 }
-
-// Client-side log receiver
-app.post('/api/log', (req, res) => {
-  const { username, event, data } = req.body;
-  addLog(username || 'unknown', event || 'client', data);
-  res.json({ ok: true });
-});
-
-// View logs
-app.get('/api/logs', (req, res) => {
-  res.json(logs.slice(-200));
-});
-
-// View logs as plain text (easy to read)
-app.get('/api/logs/text', (req, res) => {
-  res.setHeader('Content-Type', 'text/plain');
-  res.send(logs.slice(-200).map(l => `${l.ts} [${l.username}] ${l.event} ${l.data ? JSON.stringify(l.data) : ''}`).join('\n'));
-});
-  Object.keys(users).forEach(k => delete users[k]);
-  Object.keys(calls).forEach(k => delete calls[k]);
-  Object.keys(messages).forEach(k => delete messages[k]);
-  res.json({ success: true, message: 'All data cleared' });
-});
 
 app.get('/call/:callId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 server.listen(PORT, () => {
-  console.log(`FamilyCall server running on http://localhost:${PORT}`);
+  console.log(`FamilyCall server running on port ${PORT}`);
 });
