@@ -10,7 +10,20 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+app.use((req, res, next) => { 
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next(); 
+});
+
+// Serve app.js directly as a route to bypass CDN cache
+app.get('/js/app.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'js', 'app.js'));
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const users = {};
