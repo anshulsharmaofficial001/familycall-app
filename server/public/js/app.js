@@ -5,22 +5,17 @@ const HTTP_URL = location.origin;
 let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
 let myUsername = '', myName = '', chatTarget = '', refreshInterval = null;
 
-// ── Audio state ──
-let audioCtx = null;          // single AudioContext (created on user gesture)
+// ── Audio ──
 let micStream = null;
 let mediaRecorder = null;
 let audioStreamStarted = false;
 let isMuted = false;
 
-// Playback — AudioWorklet path (desktop) with ScriptProcessor fallback (mobile)
-let workletNode = null;
-let spNode = null;             // ScriptProcessor fallback
-let pcmQueue = [];             // Float32Array chunks waiting to play
-let workletReady = false;
-
-// Ring tone
-let ringOscillator = null;
-let ringGain = null;
+// Playback
+let playCtx = null;           // AudioContext for playback — created on user gesture
+let nextPlayTime = 0;         // scheduled playback cursor
+let decoding = false;
+let decodeQueue = [];         // {mime, ab} waiting to decode
 
 const $ = id => document.getElementById(id);
 
@@ -110,7 +105,9 @@ function handleMsg(msg) {
       break;
 
     case 'audio':
-      if (currentCallId === msg.callId && msg.data) receiveAudio(msg.data);
+      if (currentCallId === msg.callId && msg.data) {
+        receiveAudio(msg.mime || 'audio/webm', msg.data);
+      }
       break;
 
     case 'chat':
@@ -125,104 +122,73 @@ function handleMsg(msg) {
 function send(obj) { if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 
 // ─────────────────────────────────────────────
-// RING TONE (Web Audio beep — no file needed)
+// RING
 // ─────────────────────────────────────────────
+let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
+
 function startRing() {
+  if (ringing) return;
+  ringing = true;
   try {
-    if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-    if (audioCtx.state==='suspended') audioCtx.resume();
-    ringGain = audioCtx.createGain();
-    ringGain.gain.value = 0.4;
-    ringGain.connect(audioCtx.destination);
-    let phase = 0;
-    function beep() {
-      if (!ringGain) return;
-      ringOscillator = audioCtx.createOscillator();
-      ringOscillator.type = 'sine';
-      ringOscillator.frequency.value = phase===0 ? 480 : 440;
-      ringOscillator.connect(ringGain);
-      ringOscillator.start();
-      ringOscillator.stop(audioCtx.currentTime + 0.4);
-      ringOscillator.onended = () => {
-        phase = 1 - phase;
-        if (ringGain) setTimeout(beep, 200);
-      };
+    ringCtx = new (window.AudioContext||window.webkitAudioContext)();
+    ringGain = ringCtx.createGain();
+    ringGain.gain.value = 0.35;
+    ringGain.connect(ringCtx.destination);
+    let hi = true;
+    function pulse() {
+      if (!ringing) return;
+      ringOsc = ringCtx.createOscillator();
+      ringOsc.type = 'sine';
+      ringOsc.frequency.value = hi ? 480 : 420;
+      ringOsc.connect(ringGain);
+      ringOsc.start();
+      ringOsc.stop(ringCtx.currentTime + 0.35);
+      ringOsc.onended = () => { hi=!hi; if(ringing) setTimeout(pulse, 180); };
     }
-    beep();
+    pulse();
   } catch(e) {}
 }
 
 function stopRing() {
-  try { if(ringOscillator) { ringOscillator.onended=null; ringOscillator.stop(); } } catch(e) {}
+  ringing = false;
+  try { if(ringOsc){ringOsc.onended=null;ringOsc.stop();} } catch(e) {}
   try { if(ringGain) ringGain.disconnect(); } catch(e) {}
-  ringOscillator=null; ringGain=null;
+  try { if(ringCtx) ringCtx.close(); } catch(e) {}
+  ringCtx=null; ringGain=null; ringOsc=null;
 }
 
 // ─────────────────────────────────────────────
-// AUDIO CONTEXT INIT (must be from user gesture)
+// PLAYBACK CONTEXT — created on user gesture
 // ─────────────────────────────────────────────
-async function initAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: 16000 });
-  if (audioCtx.state==='suspended') await audioCtx.resume();
-
-  // Try AudioWorklet first (Chrome 66+, Firefox 76+)
-  if (!workletReady && audioCtx.audioWorklet) {
-    try {
-      await audioCtx.audioWorklet.addModule('/js/audio-processor.js');
-      workletNode = new AudioWorkletNode(audioCtx, 'pcm-player');
-      workletNode.connect(audioCtx.destination);
-      workletReady = true;
-    } catch(e) {
-      workletReady = false;
-      setupScriptProcessorPlayback();
-    }
-  } else if (!workletReady) {
-    setupScriptProcessorPlayback();
+function ensurePlayCtx() {
+  if (!playCtx || playCtx.state === 'closed') {
+    playCtx = new (window.AudioContext||window.webkitAudioContext)();
+    nextPlayTime = 0;
   }
-}
-
-// ScriptProcessor fallback for playback (older mobile browsers)
-function setupScriptProcessorPlayback() {
-  if (spNode) return;
-  try {
-    spNode = audioCtx.createScriptProcessor(2048, 0, 1);
-    spNode.onaudioprocess = (e) => {
-      const out = e.outputBuffer.getChannelData(0);
-      let written = 0;
-      while (written < out.length && pcmQueue.length) {
-        const chunk = pcmQueue[0];
-        const avail = chunk.length;
-        const need = out.length - written;
-        if (avail <= need) {
-          out.set(chunk, written);
-          written += avail;
-          pcmQueue.shift();
-        } else {
-          out.set(chunk.subarray(0, need), written);
-          pcmQueue[0] = chunk.subarray(need);
-          written = out.length;
-        }
-      }
-      if (written < out.length) out.fill(0, written);
-    };
-    const silentSrc = audioCtx.createConstantSource();
-    silentSrc.offset.value = 0;
-    silentSrc.connect(spNode);
-    spNode.connect(audioCtx.destination);
-    silentSrc.start();
-  } catch(e) {}
+  if (playCtx.state === 'suspended') playCtx.resume();
 }
 
 // ─────────────────────────────────────────────
-// CAPTURE: MediaRecorder → PCM16 via AudioContext
-// We decode MediaRecorder output → PCM16 → send
-// This gives us raw PCM that ANY device can play back
+// CAPTURE — MediaRecorder (works on ALL devices)
 // ─────────────────────────────────────────────
+function getSupportedMime() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const list = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/mp4',
+    ''
+  ];
+  for (const t of list) {
+    if (!t || MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+}
+
 async function startAudioStream() {
   if (audioStreamStarted) return;
   audioStreamStarted = true;
-
-  await initAudioCtx();
 
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -230,8 +196,7 @@ async function startAudioStream() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
-        channelCount: 1,
-        sampleRate: 16000
+        channelCount: 1
       }
     });
   } catch(e) {
@@ -240,119 +205,114 @@ async function startAudioStream() {
     return;
   }
 
-  // Use ScriptProcessor for capture — reads raw PCM from mic
-  // This works on desktop. On mobile we fall back to MediaRecorder.
-  let captureWorking = false;
-
-  if (audioCtx.createScriptProcessor) {
-    try {
-      const src = audioCtx.createMediaStreamSource(micStream);
-      const captureNode = audioCtx.createScriptProcessor(1024, 1, 1);
-      captureNode.onaudioprocess = (e) => {
-        if (isMuted || !currentCallId) return;
-        const f32 = e.inputBuffer.getChannelData(0);
-        // Check if we're actually getting audio (not silence from dead node)
-        let hasSignal = false;
-        for (let i = 0; i < f32.length; i += 64) { if (Math.abs(f32[i]) > 0.0001) { hasSignal = true; break; } }
-        if (!hasSignal && captureWorking) return; // skip silence
-        captureWorking = true;
-        const pcm = floatToPCM16(f32);
-        send({ type:'audio', callId:currentCallId, data: arrayBufferToBase64(pcm.buffer) });
-      };
-      const silentGain = audioCtx.createGain();
-      silentGain.gain.value = 0;
-      src.connect(captureNode);
-      captureNode.connect(silentGain);
-      silentGain.connect(audioCtx.destination);
-
-      // Check after 500ms if ScriptProcessor is firing
-      setTimeout(() => {
-        if (!captureWorking) {
-          // ScriptProcessor not working (mobile) — fall back to MediaRecorder
-          try { captureNode.disconnect(); src.disconnect(); } catch(e) {}
-          startMediaRecorderCapture();
-        }
-      }, 500);
-    } catch(e) {
-      startMediaRecorderCapture();
-    }
-  } else {
-    startMediaRecorderCapture();
-  }
-}
-
-// MediaRecorder fallback capture (for mobile where ScriptProcessor fails)
-function startMediaRecorderCapture() {
-  if (!micStream) return;
-  const types = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4',''];
-  let mime = '';
-  for (const t of types) {
-    if (!t || (typeof MediaRecorder!=='undefined' && MediaRecorder.isTypeSupported(t))) { mime=t; break; }
-  }
+  const mime = getSupportedMime();
   try {
-    mediaRecorder = new MediaRecorder(micStream, mime ? {mimeType:mime} : {});
+    mediaRecorder = mime
+      ? new MediaRecorder(micStream, {mimeType: mime})
+      : new MediaRecorder(micStream);
   } catch(e) {
     mediaRecorder = new MediaRecorder(micStream);
   }
 
-  // We decode each MediaRecorder chunk → PCM16 → send
-  // This ensures receiver always gets raw PCM regardless of sender's codec
-  const decodeCtx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: 16000 });
+  const actualMime = mediaRecorder.mimeType || mime || 'audio/webm';
 
-  mediaRecorder.ondataavailable = async (e) => {
-    if (!e.data || e.data.size < 100 || !currentCallId || isMuted) return;
-    try {
-      const ab = await e.data.arrayBuffer();
-      decodeCtx.decodeAudioData(ab.slice(0), (decoded) => {
-        const f32 = decoded.getChannelData(0);
-        // Resample to 16kHz if needed
-        const resampled = resampleTo16k(f32, decoded.sampleRate);
-        const pcm = floatToPCM16(resampled);
-        send({ type:'audio', callId:currentCallId, data: arrayBufferToBase64(pcm.buffer) });
-      }, () => {
-        // decode failed — send raw with mime tag so receiver can try
-        const bytes = new Uint8Array(ab);
-        let s=''; for(let i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]);
-        send({ type:'audio', callId:currentCallId, mime: mediaRecorder.mimeType, data: btoa(s), raw:true });
-      });
-    } catch(e) {}
+  mediaRecorder.ondataavailable = (e) => {
+    if (!e.data || e.data.size < 50 || !currentCallId || isMuted) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      // reader.result is "data:<mime>;base64,<data>"
+      const b64 = reader.result.split(',')[1];
+      if (b64) send({ type:'audio', callId:currentCallId, mime:actualMime, data:b64 });
+    };
+    reader.readAsDataURL(e.data);
   };
 
-  mediaRecorder.start(100);
+  mediaRecorder.start(80); // 80ms chunks
+}
+
+function stopAudioStream() {
+  audioStreamStarted = false;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch(e) {}
+  }
+  mediaRecorder = null;
+  if (micStream) { micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+
+  // Clear decode queue & reset playback
+  decodeQueue = [];
+  decoding = false;
+  nextPlayTime = 0;
+
+  if (timerInterval) { clearInterval(timerInterval); timerInterval=null; }
+  isMuted = false;
+  const mb = $('muteBtn');
+  if (mb) {
+    mb.querySelector('.ctrl-btn-circle').textContent = '🎙️';
+    mb.querySelector('span').textContent = 'Mute';
+    mb.classList.remove('active');
+  }
 }
 
 // ─────────────────────────────────────────────
-// PLAYBACK: receive PCM16 → play via AudioWorklet or ScriptProcessor
+// PLAYBACK — decodeAudioData + scheduled play
 // ─────────────────────────────────────────────
-function receiveAudio(b64) {
-  if (!audioCtx || audioCtx.state === 'closed') return;
-  if (audioCtx.state === 'suspended') { audioCtx.resume(); }
+function receiveAudio(mime, b64) {
+  if (!playCtx || playCtx.state === 'closed') return;
+  if (playCtx.state === 'suspended') { playCtx.resume(); }
 
+  // Convert base64 → ArrayBuffer
+  let ab;
   try {
     const s = atob(b64);
-    const buf = new ArrayBuffer(s.length);
-    const view = new Uint8Array(buf);
-    for (let i=0;i<s.length;i++) view[i]=s.charCodeAt(i);
+    ab = new ArrayBuffer(s.length);
+    const v = new Uint8Array(ab);
+    for (let i=0;i<s.length;i++) v[i]=s.charCodeAt(i);
+  } catch(e) { return; }
 
-    const int16 = new Int16Array(buf);
-    const float32 = pcm16ToFloat(int16);
+  // Limit queue to avoid delay buildup (max 5 chunks)
+  if (decodeQueue.length > 5) decodeQueue.shift();
+  decodeQueue.push({mime, ab});
 
-    if (workletReady && workletNode) {
-      workletNode.port.postMessage({ type:'chunk', samples: float32 });
-    } else {
-      // Limit queue to avoid delay buildup (max 800ms of audio at 16kHz)
-      const maxSamples = 16000 * 0.8;
-      let total = pcmQueue.reduce((a,c)=>a+c.length,0);
-      if (total < maxSamples) pcmQueue.push(float32);
+  if (!decoding) drainDecodeQueue();
+}
+
+function drainDecodeQueue() {
+  if (!decodeQueue.length || !playCtx || playCtx.state==='closed') {
+    decoding = false;
+    return;
+  }
+  decoding = true;
+  const item = decodeQueue.shift();
+
+  playCtx.decodeAudioData(
+    item.ab,
+    (decoded) => {
+      const now = playCtx.currentTime;
+      // If we've fallen behind, reset schedule to now + small buffer
+      if (nextPlayTime < now) nextPlayTime = now + 0.04;
+
+      const src = playCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(playCtx.destination);
+      src.start(nextPlayTime);
+      nextPlayTime += decoded.duration;
+
+      // Decode next chunk after this one starts
+      const delay = Math.max(0, (nextPlayTime - playCtx.currentTime - decoded.duration) * 1000);
+      setTimeout(drainDecodeQueue, Math.min(delay, 20));
+    },
+    () => {
+      // Decode failed — skip and try next
+      drainDecodeQueue();
     }
-  } catch(e) {}
+  );
 }
 
 // ─────────────────────────────────────────────
 // CALL UI
 // ─────────────────────────────────────────────
 function startCall(username, name) {
-  initAudioCtx();
+  ensurePlayCtx();
   $('callDisplayName').textContent = name;
   $('callAvatarLetter').textContent = name.charAt(0).toUpperCase();
   $('callStatusText').textContent = 'Calling...';
@@ -372,7 +332,7 @@ $('callEndBtn').onclick = () => {
 $('acceptBtn').onclick = () => {
   if (!currentCallId||!ws) return;
   stopRing();
-  initAudioCtx();
+  ensurePlayCtx();
   send({type:'accept_call', callId:currentCallId});
   $('callDisplayName').textContent = $('incomingName').textContent;
   $('callAvatarLetter').textContent = $('incomingName').textContent.charAt(0).toUpperCase();
@@ -396,8 +356,10 @@ $('declineBtn').onclick = () => {
 $('muteBtn').onclick = function() {
   isMuted = !isMuted;
   if (mediaRecorder) {
-    if (isMuted && mediaRecorder.state==='recording') mediaRecorder.pause();
-    else if (!isMuted && mediaRecorder.state==='paused') mediaRecorder.resume();
+    try {
+      if (isMuted && mediaRecorder.state==='recording') mediaRecorder.pause();
+      else if (!isMuted && mediaRecorder.state==='paused') mediaRecorder.resume();
+    } catch(e) {}
   }
   this.querySelector('.ctrl-btn-circle').textContent = isMuted ? '🔇' : '🎙️';
   this.querySelector('span').textContent = isMuted ? 'Unmute' : 'Mute';
@@ -415,66 +377,13 @@ function endCallUI() {
   loadContacts();
 }
 
-function stopAudioStream() {
-  audioStreamStarted = false;
-
-  // Stop capture
-  if (mediaRecorder && mediaRecorder.state!=='inactive') { try { mediaRecorder.stop(); } catch(e) {} }
-  mediaRecorder = null;
-  if (micStream) { micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
-
-  // Clear playback queue immediately
-  pcmQueue = [];
-  if (workletNode) { try { workletNode.port.postMessage({type:'clear'}); } catch(e) {} }
-
-  // Stop timer
-  if (timerInterval) { clearInterval(timerInterval); timerInterval=null; }
-
-  isMuted = false;
-  const mb = $('muteBtn');
-  if (mb) { mb.querySelector('.ctrl-btn-circle').textContent='🎙️'; mb.querySelector('span').textContent='Mute'; mb.classList.remove('active'); }
-}
-
-// ─────────────────────────────────────────────
-// PCM HELPERS
-// ─────────────────────────────────────────────
-function floatToPCM16(f32) {
-  const i16 = new Int16Array(f32.length);
-  for (let i=0;i<f32.length;i++) {
-    const s = Math.max(-1,Math.min(1,f32[i]));
-    i16[i] = s<0 ? s*0x8000 : s*0x7FFF;
-  }
-  return i16;
-}
-
-function pcm16ToFloat(i16) {
-  const f32 = new Float32Array(i16.length);
-  for (let i=0;i<i16.length;i++) f32[i] = i16[i] / (i16[i]<0 ? 0x8000 : 0x7FFF);
-  return f32;
-}
-
-function arrayBufferToBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let s=''; for(let i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]);
-  return btoa(s);
-}
-
-function resampleTo16k(f32, fromRate) {
-  if (fromRate === 16000) return f32;
-  const ratio = fromRate / 16000;
-  const outLen = Math.floor(f32.length / ratio);
-  const out = new Float32Array(outLen);
-  for (let i=0;i<outLen;i++) out[i] = f32[Math.floor(i*ratio)];
-  return out;
-}
-
 // ─────────────────────────────────────────────
 // TIMER
 // ─────────────────────────────────────────────
 function startCallTimer() {
   seconds=0;
   if (timerInterval) clearInterval(timerInterval);
-  timerInterval = setInterval(()=>{
+  timerInterval=setInterval(()=>{
     seconds++;
     $('callTimer').textContent=`${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
   },1000);
@@ -510,8 +419,16 @@ $('searchUser').onkeydown = e=>{ if(e.key==='Enter') $('callUserBtn').click(); }
 // ─────────────────────────────────────────────
 // TABS
 // ─────────────────────────────────────────────
-$('tabContacts').onclick = function(){ $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active'); $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide'); loadContacts(); };
-$('tabChat').onclick = function(){ $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active'); $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide'); loadChatContacts(); };
+$('tabContacts').onclick = function(){
+  $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active');
+  $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide');
+  loadContacts();
+};
+$('tabChat').onclick = function(){
+  $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active');
+  $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide');
+  loadChatContacts();
+};
 
 // ─────────────────────────────────────────────
 // CHAT
@@ -523,7 +440,8 @@ function loadChatContacts() {
       $('chatContactsList').innerHTML=others.map(u=>`
         <div class="contact-item" onclick="openChat('${u.username}','${u.name}')">
           <div class="contact-avatar" style="background:#5c6bc0">${u.name.charAt(0).toUpperCase()}</div>
-          <div class="contact-info"><div class="contact-name">${u.name}</div><div class="contact-user">${data[u.username]?data[u.username].length+' messages':'Start a conversation'}</div></div>
+          <div class="contact-info"><div class="contact-name">${u.name}</div>
+          <div class="contact-user">${data[u.username]?data[u.username].length+' messages':'Start a conversation'}</div></div>
           <div style="color:#5f6368;font-size:20px">›</div>
         </div>`).join('');
     });
@@ -562,8 +480,8 @@ function appendChatMsg(from,text,mine) {
   if (savedUser&&savedName) {
     try {
       const r=await fetch(HTTP_URL+'/api/user/'+savedUser);
-      if(r.ok){connectApp(savedUser,savedName);}
-      else{localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
-    } catch(e){localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
+      if(r.ok) connectApp(savedUser,savedName);
+      else { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
+    } catch(e) { localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); }
   }
 })();
