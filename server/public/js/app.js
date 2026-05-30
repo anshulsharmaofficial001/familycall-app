@@ -209,50 +209,134 @@ function stopCapture() {
 }
 
 /* ═══════════════════════════════════════════
-   PLAYBACK — Blob <audio> (universal)
-   Each chunk → Blob → objectURL → new Audio → play()
-   Queued so chunks don't overlap
+   PLAYBACK — MSE streaming (correct approach for WebM chunks)
+   Phone sends WebM chunks → laptop plays via MediaSource
 ═══════════════════════════════════════════ */
 let rxCount = 0;
+let msAudio = null;      // <audio> element
+let ms = null;           // MediaSource
+let sb = null;           // SourceBuffer
+let sbPending = [];      // ArrayBuffer queue for SourceBuffer
+let msReady = false;
+let msInitMime = '';
+
+function initMSE(mime) {
+  // Normalize mime for MSE
+  let mseMime = 'audio/webm;codecs=opus';
+  if (mime && mime.includes('mp4')) mseMime = 'audio/mp4;codecs="mp4a.40.2"';
+  else if (mime && mime.includes('ogg')) mseMime = 'audio/ogg;codecs=opus';
+
+  msInitMime = mseMime;
+
+  if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported(mseMime)) {
+    slog('mse_not_supported', { mime: mseMime });
+    return false;
+  }
+
+  msAudio = document.createElement('audio');
+  msAudio.autoplay = true;
+  msAudio.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+  document.body.appendChild(msAudio);
+
+  ms = new MediaSource();
+  msAudio.src = URL.createObjectURL(ms);
+
+  ms.addEventListener('sourceopen', () => {
+    try {
+      sb = ms.addSourceBuffer(mseMime);
+      sb.mode = 'sequence';
+      sb.addEventListener('updateend', flushSB);
+      msReady = true;
+      slog('mse_ready', { mime: mseMime });
+      flushSB(); // flush any queued chunks
+    } catch(e) {
+      slog('mse_sb_fail', { err: e.message });
+      cleanupMSE();
+    }
+  });
+
+  ms.addEventListener('sourceended', () => { msReady = false; });
+  ms.addEventListener('sourceclose', () => { msReady = false; });
+
+  return true;
+}
+
+function flushSB() {
+  if (!sb || sb.updating || !sbPending.length) return;
+  try {
+    sb.appendBuffer(sbPending.shift());
+  } catch(e) {
+    slog('sb_append_fail', { err: e.message });
+    // If quota exceeded, remove old buffered data
+    if (e.name === 'QuotaExceededError' && sb.buffered.length > 0) {
+      try { sb.remove(0, sb.buffered.start(0) + 5); } catch(e2) {}
+    } else {
+      sbPending = [];
+    }
+  }
+}
+
+function cleanupMSE() {
+  msReady = false;
+  try { if(ms && ms.readyState === 'open') ms.endOfStream(); } catch(e) {}
+  try { if(msAudio) { msAudio.pause(); URL.revokeObjectURL(msAudio.src); msAudio.remove(); } } catch(e) {}
+  ms = null; sb = null; msAudio = null; sbPending = []; msInitMime = '';
+}
 
 function playChunk(mime, b64) {
   rxCount++;
-  if (rxCount <= 3 || rxCount % 20 === 0)
-    slog('chunk_recv', { n: rxCount, mime, b64len: b64.length });
 
+  // Decode base64 → ArrayBuffer
   let ab;
   try {
     const s = atob(b64);
     ab = new ArrayBuffer(s.length);
     const v = new Uint8Array(ab);
-    for (let i=0;i<s.length;i++) v[i]=s.charCodeAt(i);
-  } catch(e) { slog('b64_fail',{err:e.message}); return; }
+    for (let i = 0; i < s.length; i++) v[i] = s.charCodeAt(i);
+  } catch(e) { slog('b64_fail', { err: e.message }); return; }
 
-  // Keep queue small to avoid delay buildup
-  if (blobQueue.length > 4) {
-    slog('queue_drop', { qlen: blobQueue.length });
-    blobQueue = blobQueue.slice(-2);
+  // Init MSE on first chunk
+  if (!ms && !msInitMime) {
+    const ok = initMSE(mime);
+    if (!ok) {
+      // MSE not supported — fallback to blob
+      blobPlay(mime, ab);
+      return;
+    }
   }
-  blobQueue.push({mime: mime||'audio/webm', ab});
+
+  if (msReady && sb && !sb.updating) {
+    sbPending.push(ab);
+    flushSB();
+  } else if (ms) {
+    // MSE initializing — queue it
+    if (sbPending.length < 30) sbPending.push(ab);
+  } else {
+    blobPlay(mime, ab);
+  }
+}
+
+/* Blob fallback (for browsers without MSE) */
+function blobPlay(mime, ab) {
+  blobQueue.push({ mime: mime || 'audio/webm', ab });
   if (!blobPlaying) nextBlob();
 }
 
 function nextBlob() {
-  if (!blobQueue.length) { blobPlaying=false; return; }
+  if (!blobQueue.length) { blobPlaying = false; return; }
   blobPlaying = true;
   const item = blobQueue.shift();
-  const blob = new Blob([item.ab], {type: item.mime});
-  const url  = URL.createObjectURL(blob);
-  const a    = new Audio(url);
-  a.onended  = () => { URL.revokeObjectURL(url); nextBlob(); };
-  a.onerror  = (e) => { slog('play_err',{mime:item.mime,err:String(e)}); URL.revokeObjectURL(url); nextBlob(); };
-  a.play()
-    .then(() => { if (rxCount <= 3) slog('play_ok',{mime:item.mime}); })
-    .catch(e => { slog('play_blocked',{err:e.message,mime:item.mime}); URL.revokeObjectURL(url); nextBlob(); });
+  const blob = new Blob([item.ab], { type: item.mime });
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(url);
+  a.onended = () => { URL.revokeObjectURL(url); nextBlob(); };
+  a.onerror = () => { URL.revokeObjectURL(url); nextBlob(); };
+  a.play().catch(() => { URL.revokeObjectURL(url); nextBlob(); });
 }
 
 function cleanupPlayback() {
-  blobQueue=[]; blobPlaying=false; rxCount=0; mimeForPlayback='';
+  cleanupMSE();
+  blobQueue = []; blobPlaying = false; rxCount = 0; mimeForPlayback = '';
 }
 
 /* ═══════════════════════════════════════════
