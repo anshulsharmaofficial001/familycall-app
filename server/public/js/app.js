@@ -19,6 +19,22 @@ let decodeQueue = [];         // {mime, ab} waiting to decode
 
 const $ = id => document.getElementById(id);
 
+// ── Debug overlay (shows on screen so we can see on phone) ──
+let debugEl = null;
+function showDebug(msg) {
+  if (!debugEl) {
+    debugEl = document.createElement('div');
+    debugEl.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.85);color:#0f0;font-size:11px;padding:4px 8px;z-index:9999;max-height:120px;overflow-y:auto;font-family:monospace;word-break:break-all';
+    document.body.appendChild(debugEl);
+  }
+  const line = document.createElement('div');
+  line.textContent = new Date().toISOString().substr(11,8) + ' ' + msg;
+  debugEl.appendChild(line);
+  // keep last 15 lines
+  while (debugEl.children.length > 15) debugEl.removeChild(debugEl.firstChild);
+  debugEl.scrollTop = debugEl.scrollHeight;
+}
+
 // ─────────────────────────────────────────────
 // AUTH
 // ─────────────────────────────────────────────
@@ -106,6 +122,7 @@ function handleMsg(msg) {
 
     case 'audio':
       if (currentCallId === msg.callId && msg.data) {
+        showDebug('RX mime=' + (msg.mime||'?') + ' len=' + msg.data.length);
         receiveAudio(msg.mime || 'audio/webm', msg.data);
       }
       break;
@@ -164,8 +181,12 @@ function ensurePlayCtx() {
   if (!playCtx || playCtx.state === 'closed') {
     playCtx = new (window.AudioContext||window.webkitAudioContext)();
     nextPlayTime = 0;
+    showDebug('playCtx created state=' + playCtx.state);
   }
-  if (playCtx.state === 'suspended') playCtx.resume();
+  if (playCtx.state === 'suspended') {
+    playCtx.resume();
+    showDebug('playCtx resumed');
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -215,12 +236,13 @@ async function startAudioStream() {
   }
 
   const actualMime = mediaRecorder.mimeType || mime || 'audio/webm';
+  showDebug('MR started mime=' + actualMime);
 
   mediaRecorder.ondataavailable = (e) => {
     if (!e.data || e.data.size < 50 || !currentCallId || isMuted) return;
+    showDebug('TX size=' + e.data.size + ' mime=' + actualMime);
     const reader = new FileReader();
     reader.onloadend = () => {
-      // reader.result is "data:<mime>;base64,<data>"
       const b64 = reader.result.split(',')[1];
       if (b64) send({ type:'audio', callId:currentCallId, mime:actualMime, data:b64 });
     };
@@ -257,8 +279,14 @@ function stopAudioStream() {
 // PLAYBACK — decodeAudioData + scheduled play
 // ─────────────────────────────────────────────
 function receiveAudio(mime, b64) {
-  if (!playCtx || playCtx.state === 'closed') return;
-  if (playCtx.state === 'suspended') { playCtx.resume(); }
+  if (!playCtx || playCtx.state === 'closed') {
+    showDebug('RX but no playCtx!');
+    return;
+  }
+  if (playCtx.state === 'suspended') {
+    showDebug('RX playCtx suspended, resuming');
+    playCtx.resume();
+  }
 
   // Convert base64 → ArrayBuffer
   let ab;
@@ -287,8 +315,8 @@ function drainDecodeQueue() {
   playCtx.decodeAudioData(
     item.ab,
     (decoded) => {
+      showDebug('PLAY dur=' + decoded.duration.toFixed(2) + 's');
       const now = playCtx.currentTime;
-      // If we've fallen behind, reset schedule to now + small buffer
       if (nextPlayTime < now) nextPlayTime = now + 0.04;
 
       const src = playCtx.createBufferSource();
@@ -297,12 +325,11 @@ function drainDecodeQueue() {
       src.start(nextPlayTime);
       nextPlayTime += decoded.duration;
 
-      // Decode next chunk after this one starts
       const delay = Math.max(0, (nextPlayTime - playCtx.currentTime - decoded.duration) * 1000);
       setTimeout(drainDecodeQueue, Math.min(delay, 20));
     },
-    () => {
-      // Decode failed — skip and try next
+    (err) => {
+      showDebug('DECODE FAIL mime=' + item.mime + ' err=' + (err||'?'));
       drainDecodeQueue();
     }
   );
