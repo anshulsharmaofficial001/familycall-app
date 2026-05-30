@@ -12,18 +12,24 @@ let mediaRecorder    = null;
 let audioStarted     = false;
 let isMuted          = false;
 
-/* Playback via <audio> element — works on ALL browsers/devices */
-let audioEl          = null;
-let mediaSource      = null;
-let sourceBuffer     = null;
-let sbQueue          = [];          // ArrayBuffer chunks waiting to append
-let sbBusy           = false;
+/* Playback */
 let mimeForPlayback  = '';
+let blobQueue = [], blobPlaying = false;
 
 /* Ring */
 let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
 
 const $ = id => document.getElementById(id);
+
+/* ── Server-side logger ── */
+function slog(event, data) {
+  if (!myUsername) return;
+  fetch(`${HTTP_URL}/api/log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: myUsername, event, data })
+  }).catch(() => {});
+}
 
 /* ═══════════════════════════════════════════
    AUTH
@@ -166,20 +172,29 @@ async function startCapture() {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 }
     });
-  } catch(e) { alert('Mic denied: '+e.message); audioStarted=false; return; }
+  } catch(e) { alert('Mic denied: '+e.message); audioStarted=false; slog('mic_denied',{err:e.message}); return; }
 
   const mime = getBestMime();
+  slog('mic_ok', { mime, ua: navigator.userAgent.substring(0,80) });
+
   try { mediaRecorder = mime ? new MediaRecorder(micStream,{mimeType:mime}) : new MediaRecorder(micStream); }
   catch(e) { mediaRecorder = new MediaRecorder(micStream); }
 
   const actualMime = mediaRecorder.mimeType || mime || 'audio/webm';
+  slog('recorder_start', { actualMime });
 
+  let chunkCount = 0;
   mediaRecorder.ondataavailable = e => {
     if (!e.data||e.data.size<50||!currentCallId||isMuted) return;
+    chunkCount++;
     const reader = new FileReader();
     reader.onloadend = () => {
       const b64 = reader.result.split(',')[1];
-      if (b64) send({type:'audio', callId:currentCallId, mime:actualMime, data:b64});
+      if (b64) {
+        if (chunkCount <= 3 || chunkCount % 20 === 0)
+          slog('chunk_sent', { n: chunkCount, size: e.data.size, mime: actualMime });
+        send({type:'audio', callId:currentCallId, mime:actualMime, data:b64});
+      }
     };
     reader.readAsDataURL(e.data);
   };
@@ -194,103 +209,50 @@ function stopCapture() {
 }
 
 /* ═══════════════════════════════════════════
-   PLAYBACK  — MediaSource + SourceBuffer
-   Falls back to individual Blob <audio> if MSE not supported
+   PLAYBACK — Blob <audio> (universal)
+   Each chunk → Blob → objectURL → new Audio → play()
+   Queued so chunks don't overlap
 ═══════════════════════════════════════════ */
-function initPlayback(mime) {
-  // Normalise mime for MSE codec check
-  const mseMime = mime.includes('opus') ? 'audio/webm;codecs=opus'
-                : mime.includes('mp4')  ? 'audio/mp4;codecs="mp4a.40.2"'
-                : mime.includes('ogg')  ? 'audio/ogg;codecs=opus'
-                : 'audio/webm;codecs=opus';
+let rxCount = 0;
 
-  mimeForPlayback = mime;
-
-  if (typeof MediaSource!=='undefined' && MediaSource.isTypeSupported(mseMime)) {
-    // ── MSE path (desktop Chrome, Firefox) ──
-    audioEl = document.createElement('audio');
-    audioEl.autoplay = true;
-    audioEl.style.display = 'none';
-    document.body.appendChild(audioEl);
-
-    mediaSource = new MediaSource();
-    audioEl.src = URL.createObjectURL(mediaSource);
-
-    mediaSource.addEventListener('sourceopen', () => {
-      try {
-        sourceBuffer = mediaSource.addSourceBuffer(mseMime);
-        sourceBuffer.mode = 'sequence';
-        sourceBuffer.addEventListener('updateend', flushSBQueue);
-        flushSBQueue();
-      } catch(e) {
-        // MSE failed — fall back to blob playback
-        cleanupMSE();
-        mimeForPlayback = mime; // keep original
-      }
-    });
-  }
-  // If MSE not available, playChunk will use blob fallback directly
-}
-
-function flushSBQueue() {
-  if (!sourceBuffer||sourceBuffer.updating||!sbQueue.length) return;
-  sbBusy = true;
-  try { sourceBuffer.appendBuffer(sbQueue.shift()); }
-  catch(e) { sbQueue=[]; sbBusy=false; }
-}
-
-function cleanupMSE() {
-  try{if(mediaSource&&mediaSource.readyState==='open')mediaSource.endOfStream();}catch(e){}
-  try{if(audioEl){audioEl.pause();URL.revokeObjectURL(audioEl.src);audioEl.remove();}}catch(e){}
-  mediaSource=null; sourceBuffer=null; audioEl=null; sbQueue=[]; sbBusy=false;
-}
-
-/* Play one chunk — tries MSE first, falls back to Blob <audio> */
 function playChunk(mime, b64) {
-  // Decode base64 → ArrayBuffer
+  rxCount++;
+  if (rxCount <= 3 || rxCount % 20 === 0)
+    slog('chunk_recv', { n: rxCount, mime, b64len: b64.length });
+
   let ab;
   try {
-    const s=atob(b64); ab=new ArrayBuffer(s.length);
-    const v=new Uint8Array(ab); for(let i=0;i<s.length;i++) v[i]=s.charCodeAt(i);
-  } catch(e){return;}
+    const s = atob(b64);
+    ab = new ArrayBuffer(s.length);
+    const v = new Uint8Array(ab);
+    for (let i=0;i<s.length;i++) v[i]=s.charCodeAt(i);
+  } catch(e) { slog('b64_fail',{err:e.message}); return; }
 
-  // Init playback on first chunk
-  if (!audioEl && !mimeForPlayback) initPlayback(mime);
-
-  if (sourceBuffer && mediaSource && mediaSource.readyState==='open') {
-    // MSE path
-    sbQueue.push(ab);
-    if (!sourceBuffer.updating) flushSBQueue();
-  } else {
-    // ── Blob <audio> fallback — works on iOS Safari & all mobile browsers ──
-    blobPlay(mime, ab);
+  // Keep queue small to avoid delay buildup
+  if (blobQueue.length > 4) {
+    slog('queue_drop', { qlen: blobQueue.length });
+    blobQueue = blobQueue.slice(-2);
   }
-}
-
-/* Blob playback queue — prevents overlapping audio */
-let blobQueue = [], blobPlaying = false;
-
-function blobPlay(mime, ab) {
-  blobQueue.push({mime,ab});
+  blobQueue.push({mime: mime||'audio/webm', ab});
   if (!blobPlaying) nextBlob();
 }
 
 function nextBlob() {
-  if (!blobQueue.length){blobPlaying=false;return;}
-  blobPlaying=true;
-  const item=blobQueue.shift();
-  const blob=new Blob([item.ab],{type:item.mime||'audio/webm'});
-  const url=URL.createObjectURL(blob);
-  const a=new Audio(url);
-  a.onended=()=>{URL.revokeObjectURL(url); nextBlob();};
-  a.onerror=()=>{URL.revokeObjectURL(url); nextBlob();};
-  a.play().catch(()=>{URL.revokeObjectURL(url); nextBlob();});
+  if (!blobQueue.length) { blobPlaying=false; return; }
+  blobPlaying = true;
+  const item = blobQueue.shift();
+  const blob = new Blob([item.ab], {type: item.mime});
+  const url  = URL.createObjectURL(blob);
+  const a    = new Audio(url);
+  a.onended  = () => { URL.revokeObjectURL(url); nextBlob(); };
+  a.onerror  = (e) => { slog('play_err',{mime:item.mime,err:String(e)}); URL.revokeObjectURL(url); nextBlob(); };
+  a.play()
+    .then(() => { if (rxCount <= 3) slog('play_ok',{mime:item.mime}); })
+    .catch(e => { slog('play_blocked',{err:e.message,mime:item.mime}); URL.revokeObjectURL(url); nextBlob(); });
 }
 
 function cleanupPlayback() {
-  cleanupMSE();
-  blobQueue=[]; blobPlaying=false;
-  mimeForPlayback='';
+  blobQueue=[]; blobPlaying=false; rxCount=0; mimeForPlayback='';
 }
 
 /* ═══════════════════════════════════════════

@@ -16,6 +16,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 const users = {};
 const calls = {};
 const messages = {};
+const logs = [];   // in-memory log store
+
+function addLog(username, event, data) {
+  const entry = { ts: new Date().toISOString(), username, event, data };
+  logs.push(entry);
+  if (logs.length > 500) logs.shift();
+  console.log(`[LOG] ${entry.ts} ${username} ${event}`, data || '');
+}
 
 function addMsg(from, to, text) {
   const key = [from, to].sort().join(':');
@@ -171,9 +179,10 @@ function handleMessage(ws, msg, username, name) {
     }
     case 'audio': {
       const call = calls[msg.callId];
-      if (!call) return;
+      if (!call) { addLog(username, 'audio_no_call', { callId: msg.callId }); return; }
       const otherKey = call.callerUsername === username ? call.calleeUsername : call.callerUsername;
       const other = users[otherKey];
+      addLog(username, 'audio_relay', { mime: msg.mime, size: msg.data ? msg.data.length : 0, to: otherKey, otherOnline: !!(other && other.ws && other.ws.readyState === WebSocket.OPEN) });
       if (other && other.ws && other.ws.readyState === WebSocket.OPEN) {
         other.ws.send(JSON.stringify({ type: 'audio', callId: msg.callId, mime: msg.mime, data: msg.data }));
       }
@@ -201,7 +210,23 @@ function handleMessage(ws, msg, username, name) {
   }
 }
 
-app.get('/api/reset', (req, res) => {
+// Client-side log receiver
+app.post('/api/log', (req, res) => {
+  const { username, event, data } = req.body;
+  addLog(username || 'unknown', event || 'client', data);
+  res.json({ ok: true });
+});
+
+// View logs
+app.get('/api/logs', (req, res) => {
+  res.json(logs.slice(-200));
+});
+
+// View logs as plain text (easy to read)
+app.get('/api/logs/text', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(logs.slice(-200).map(l => `${l.ts} [${l.username}] ${l.event} ${l.data ? JSON.stringify(l.data) : ''}`).join('\n'));
+});
   Object.keys(users).forEach(k => delete users[k]);
   Object.keys(calls).forEach(k => delete calls[k]);
   Object.keys(messages).forEach(k => delete messages[k]);
