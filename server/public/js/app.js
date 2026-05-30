@@ -1,3 +1,4 @@
+// FamilyCall v6 - PCM16 pure audio
 'use strict';
 const WS_PROTO = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL   = `${WS_PROTO}//${location.host}`;
