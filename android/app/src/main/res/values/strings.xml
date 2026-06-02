@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FamilyCall</string>
-    <string name="incoming_call">Incoming Call</string>
+    <string name="app_name">FamilyCall</string>    <string name="incoming_call">Incoming Call</string>
     <string name="accept">Accept</string>
     <string name="decline">Decline</string>
     <string name="end_call">End Call</string>

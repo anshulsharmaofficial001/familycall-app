@@ -105,8 +105,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     binding.emptyText.visibility = android.view.View.GONE
                     binding.contactsRecycler.visibility = android.view.View.VISIBLE
-                }
-            }
+                }            }
         }
     }
 

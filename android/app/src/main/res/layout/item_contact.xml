@@ -1,71 +1,111 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="8dp"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    android:layout_marginBottom="10dp"
+    app:cardCornerRadius="20dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="@color/card_bg">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="72dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="12dp"
-        android:orientation="horizontal">
+        android:padding="14dp">
 
-        <TextView
-            android:id="@+id/avatarText"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:gravity="center"
-            android:text="P"
-            android:textColor="@color/white"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:background="@drawable/ic_person"
-            android:backgroundTint="@color/primary" />
+        <!-- Avatar with online dot -->
+        <FrameLayout
+            android:layout_width="54dp"
+            android:layout_height="54dp">
 
+            <TextView
+                android:id="@+id/avatarText"
+                android:layout_width="54dp"
+                android:layout_height="54dp"
+                android:gravity="center"
+                android:text="A"
+                android:textColor="@color/white"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:background="@drawable/circle_primary" />
+
+            <View
+                android:id="@+id/onlineDot"
+                android:layout_width="14dp"
+                android:layout_height="14dp"
+                android:layout_gravity="bottom|end"
+                android:background="@drawable/circle_online"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+        <!-- Name + status -->
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="12dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
             android:orientation="vertical">
 
             <TextView
                 android:id="@+id/contactName"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Papa"
-                android:textSize="18sp"
+                android:text="Family Member"
+                android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="@color/black" />
+                android:textColor="@color/text_primary"
+                android:maxLines="1"
+                android:ellipsize="end" />
 
             <TextView
                 android:id="@+id/contactPhone"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="+91 98765xxxxx"
-                android:textSize="14sp"
-                android:textColor="#666" />
+                android:layout_marginTop="2dp"
+                android:text="Offline"
+                android:textSize="13sp"
+                android:textColor="@color/text_secondary" />
+
         </LinearLayout>
 
-        <ImageButton
+        <!-- Chat button -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/chatBtn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginEnd="4dp"
-            android:background="@drawable/ic_person"
-            android:backgroundTint="#1E88E5"
-            android:scaleType="center" />
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginEnd="8dp"
+            android:padding="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            app:cornerRadius="22dp"
+            app:icon="@drawable/ic_person"
+            app:iconSize="20dp"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:strokeColor="@color/primary_light"
+            app:iconTint="@color/primary" />
 
-    <ImageButton
+        <!-- Call button -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/callBtn"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/ic_phone"
-            android:backgroundTint="@color/green"
-            android:scaleType="center" />
+            style="@style/Widget.MaterialComponents.Button"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="0dp"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            app:cornerRadius="22dp"
+            app:icon="@drawable/ic_phone"
+            app:iconSize="20dp"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:backgroundTint="@color/green" />
+
     </LinearLayout>
+
 </androidx.cardview.widget.CardView>

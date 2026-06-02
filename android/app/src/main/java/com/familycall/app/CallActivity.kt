@@ -52,6 +52,8 @@ class CallActivity : AppCompatActivity() {
 
         binding.contactName.text = calleeName
         binding.callStatus.text = if (isCaller) "Calling..." else "Connecting..."
+        // Set avatar letter
+        try { binding.avatarLetter.text = calleeName.firstOrNull()?.uppercase() ?: "?" } catch(e: Exception) {}
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {

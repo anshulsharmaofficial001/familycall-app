@@ -40,6 +40,7 @@ class IncomingCallActivity : AppCompatActivity() {
 
         binding.callerName.text = callerName
         binding.callerUsername.text = "@$callerUsername"
+        try { binding.callerAvatarLetter.text = callerName.firstOrNull()?.uppercase() ?: "?" } catch(e: Exception) {}
 
         startRinging()
         startVibration()
