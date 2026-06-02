@@ -617,35 +617,23 @@ $('speakerBtn').onclick=function(){
 // Message button on call screen — opens mini chat overlay
 $('callMsgBtn').onclick=function(){
   const overlay = $('callChatOverlay');
-  if(overlay){
-    overlay.classList.toggle('hide');
-    if(!overlay.classList.contains('hide') && callChatTarget){
-      $('callChatTarget').textContent = $('callDisplayName').textContent;
-      $('callChatMessages').innerHTML = '';
-    }
-  }
+  if(overlay){ overlay.classList.toggle('hide'); if(!overlay.classList.contains('hide')&&callChatTarget){ const t=$('callChatTarget'); if(t)t.textContent=$('callDisplayName').textContent; const m=$('callChatMessages'); if(m)m.innerHTML=''; } }
 };
 
-$('callChatClose').onclick=function(){
-  $('callChatOverlay').classList.add('hide');
-};
+const callChatClose=$('callChatClose'); if(callChatClose) callChatClose.onclick=function(){ $('callChatOverlay').classList.add('hide'); };
 
-$('callChatSendBtn').onclick=function(){
-  const inp = $('callChatInput');
-  const t = inp.value.trim();
-  if(!t) return;
-  const target = callChatTarget || chatTarget;
-  if(!target){ alert('No chat target'); return; }
-  send({type:'chat', to:target, text:t});
-  const div = document.createElement('div');
-  div.className='chat-msg chat-mine';
-  div.textContent=t;
-  $('callChatMessages').appendChild(div);
-  $('callChatMessages').scrollTop=$('callChatMessages').scrollHeight;
+const callChatSendBtn=$('callChatSendBtn'); if(callChatSendBtn) callChatSendBtn.onclick=function(){
+  const inp=$('callChatInput'); if(!inp)return;
+  const t=inp.value.trim(); if(!t)return;
+  const target=callChatTarget||chatTarget;
+  if(!target)return;
+  send({type:'chat',to:target,text:t});
+  const div=document.createElement('div'); div.className='chat-msg chat-mine'; div.textContent=t;
+  const msgs=$('callChatMessages'); if(msgs){msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;}
   inp.value='';
 };
 
-$('callChatInput').onkeydown=e=>{ if(e.key==='Enter')$('callChatSendBtn').click(); };
+const callChatInput=$('callChatInput'); if(callChatInput) callChatInput.onkeydown=e=>{if(e.key==='Enter'&&callChatSendBtn)callChatSendBtn.click();};
 
 function endCallUI(){
   stopCapture();
@@ -658,7 +646,7 @@ function endCallUI(){
   const mb=$('muteBtn');
   if(mb){mb.querySelector('.ctrl-btn-circle').textContent='🎙️';mb.querySelector('span').textContent='Mute';mb.classList.remove('active');}
   const hb=$('holdBtn');
-  if(hb){hb.querySelector('.ctrl-btn-circle').textContent='⏸';hb.querySelector('span').textContent='Hold';hb.classList.remove('active');}
+  if(hb){hb.querySelector('.ctrl-btn-circle').textContent='⏸️';hb.querySelector('span').textContent='Hold';hb.classList.remove('active');}
   const sb=$('speakerBtn');
   if(sb){sb.querySelector('.ctrl-btn-circle').textContent='🔊';sb.querySelector('span').textContent='Speaker';sb.classList.remove('active');}
   const overlay=$('callChatOverlay');
