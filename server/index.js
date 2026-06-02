@@ -12,11 +12,14 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '20mb' }));
 app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-app.get('/js/app.js', (req, res) => {
+const noStoreJs = (file) => (req, res) => {
   res.set('Content-Type', 'application/javascript');
   res.set('Cache-Control', 'no-store');
-  res.sendFile(path.join(__dirname, 'public', 'js', 'app.js'));
-});
+  res.sendFile(path.join(__dirname, 'public', 'js', file));
+};
+app.get('/js/app.js', noStoreJs('app.js'));
+app.get('/js/pcm-recorder.js', noStoreJs('pcm-recorder.js'));
+app.get('/js/audio-processor.js', noStoreJs('audio-processor.js'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory: online status + WS refs + active calls
@@ -83,9 +86,9 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 3,
-    versionName: '3.0',
-    apkUrl: 'https://github.com/anshulsharmaofficial001/familycall-app/releases/latest/download/app-debug.apk',
+    versionCode: 14,
+    versionName: '4.0',
+    apkUrl: 'https://github.com/anshulsharmaofficial001/familycall-app/releases/download/v4.0/FamilyCall-latest.apk',
     releaseNotes: 'New features: Groups, SOS, Live Location, Voice Status, Battery Monitor, Birthday Alerts, Auto-update!'
   });
 });
@@ -226,6 +229,18 @@ app.post('/api/friend-accept', async (req, res) => {
     });
     sendTo(fromKey, { type: 'friend_accepted', by: toKey, byName: (await getUserRow(toKey))?.name });
     sendTo(toKey, { type: 'friend_accepted', by: fromKey, byName: (await getUserRow(fromKey))?.name });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/friend-decline', async (req, res) => {
+  try {
+    const { from, to } = req.body;
+    const fromKey = from.toLowerCase(), toKey = to.toLowerCase();
+    await db.execute({
+      sql: `DELETE FROM friends WHERE user1=? AND user2=? AND status='pending'`,
+      args: [fromKey, toKey]
+    });
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

@@ -74,6 +74,7 @@ function doRegister() {
   const u = ($('regUser') && $('regUser').value || '').trim().toLowerCase();
   const n = ($('regName') && $('regName').value || '').trim();
   const p = $('regPass') && $('regPass').value || '';
+  const dob = $('regDob') && $('regDob').value || null;
   if (!u || !n || !p) return alert('Fill all fields');
   if (u.includes(' ')) return alert('No spaces in username');
   const btn = $('regBtn');
@@ -83,7 +84,7 @@ function doRegister() {
   fetch(`${HTTP_URL}/api/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: u, name: n, password: p })
+    body: JSON.stringify({ username: u, name: n, password: p, dob: dob||undefined })
   })
     .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.error || 'Registration failed'); }))
     .then(() => {
@@ -795,14 +796,18 @@ async function loadContacts(){
         const statusText = u.online
           ? `<span style="color:var(--green);font-weight:700">● Online</span>`
           : `<span style="color:var(--text2)">○ Offline</span>`;
+        const bat = batteryCache[u.username];
+        const batPct = bat ? Math.round(bat.level*100) : null;
+        const batColor = !bat ? '' : bat.charging ? '#4CAF50' : batPct>30 ? '#4CAF50' : batPct>15 ? '#FF9800' : '#F44336';
+        const batDot = bat ? `<span class="battery-dot" data-user="${u.username}" title="Battery: ${batPct}%${bat.charging?' ⚡':''}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${batColor};margin-left:4px"></span>` : '';
         return `
           <div class="contact-item">
-            <div class="${avatarClass}">
+            <div class="${avatarClass}" data-vsuser="${u.username}">
               ${avatarContent}
-              <span class="status-dot ${u.online?'dot-on':'dot-off'}"></span>
+              <span class="status-dot ${u.online?'dot-on':'dot-off'}" data-user="${u.username}"></span>
             </div>
             <div class="contact-info">
-              <div class="contact-name">${u.name} ${creatorBadge}</div>
+              <div class="contact-name">${u.name} ${creatorBadge}${batDot}</div>
               <div class="contact-sub">@${u.username} · ${statusText}</div>
             </div>
             <div class="contact-actions">
@@ -1027,6 +1032,8 @@ function openProfileModal(){
   fetch(`${HTTP_URL}/api/profile/${myUsername}`).then(r=>r.json()).then(u=>{
     const ni = $('profileNameInput');
     if(ni) ni.value = u.name || myName;
+    const dobIn = $('profileDobInput');
+    if(dobIn && u.dob) dobIn.value = u.dob;
     const preview = $('profileAvatarPreview');
     if(preview) {
       if(u.avatar){
@@ -1046,11 +1053,12 @@ function closeProfileModal(){
 
 function saveProfile(){
   const name = $('profileNameInput') ? $('profileNameInput').value.trim() : '';
+  const dob = $('profileDobInput') ? $('profileDobInput').value || null : null;
   const preview = $('profileAvatarPreview');
   const avatar = preview ? (preview.getAttribute('data-b64') || null) : null;
   fetch(`${HTTP_URL}/api/profile`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ username: myUsername, name: name||undefined, avatar: avatar||undefined })
+    body: JSON.stringify({ username: myUsername, name: name||undefined, avatar: avatar||undefined, dob: dob||undefined })
   }).then(r=>r.json()).then(r=>{
     if(r.success){
       if(name){ myName=r.user.name; localStorage.setItem('fc_name',r.user.name); }
@@ -1584,8 +1592,11 @@ async function createGroup() {
 
 /* ── declineFriend ── */
 function declineFriend(fromUsername) {
-  // Just ignore — no action needed server side for decline
-  showToast('Request ignored');
+  fetch(`${HTTP_URL}/api/friend-decline`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ from: fromUsername, to: myUsername })
+  }).catch(()=>{});
+  showToast('Request declined');
   loadContacts();
 }
 
