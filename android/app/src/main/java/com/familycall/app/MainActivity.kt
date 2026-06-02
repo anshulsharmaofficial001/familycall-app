@@ -28,6 +28,13 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         serverClient = ServerClient.getInstance()
 
+        // Show creator badge if superadmin
+        if (FamilyCallApp.currentRole == "superadmin") {
+            supportActionBar?.title = "✦ Anshul Sharma — Creator"
+        } else {
+            supportActionBar?.title = "FamilyCall — ${FamilyCallApp.currentUserName}"
+        }
+
         // Check for updates on startup (silent, non-blocking)
         UpdateChecker.checkForUpdate(this)
 

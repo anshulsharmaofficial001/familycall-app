@@ -73,6 +73,7 @@ class LoginActivity : AppCompatActivity() {
                         binding.progressBar.visibility = android.view.View.GONE
                         if (success) {
                             FamilyCallApp.currentUsername = username
+                            FamilyCallApp.currentUserName = FamilyCallApp.currentUserName.ifEmpty { username }
                             prefs.edit().putString("username", username).putString("password", password).apply()
                             navigateToMain()
                         } else {
