@@ -16,10 +16,18 @@ let isMuted       = false;
 let captureCtx    = null;
 let captureSource = null;
 let captureProc   = null;
+let captureNode   = null;
+let captureGain   = null;
 
 /* Playback via AudioContext → scheduled PCM16 */
 let playCtx       = null;
 let playNextTime  = 0;
+let playNode      = null;
+let playGain      = null;
+let playMode      = 'buffer';
+let txAudioChunks = 0;
+let rxAudioChunks = 0;
+let playedAudioChunks = 0;
 
 /* Ring */
 let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
@@ -35,6 +43,9 @@ function slog(event, data) {
   }).catch(()=>{});
 }
 
+window.addEventListener('error', e => slog('window_error', { message:e.message, source:e.filename, line:e.lineno }));
+window.addEventListener('unhandledrejection', e => slog('promise_rejection', { reason:String(e.reason && (e.reason.message || e.reason)) }));
+
 /* ═══════════════════════════════════════════
    AUTH
 ═══════════════════════════════════════════ */
@@ -45,10 +56,12 @@ $('loginBtn').onclick = () => {
   const u=$('loginUser').value.trim().toLowerCase(), p=$('loginPass').value;
   if (!u||!p) return alert('Enter username and password');
   $('loginBtn').textContent='Signing in…'; $('loginBtn').disabled=true;
+  myUsername=u;
+  slog('login_click',{username:u});
   fetch(`${HTTP_URL}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
     .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Login failed');}))
-    .then(r=>{localStorage.setItem('fc_user',r.user.username);localStorage.setItem('fc_name',r.user.name);connectApp(r.user.username,r.user.name);})
-    .catch(e=>{$('loginBtn').textContent='Sign In';$('loginBtn').disabled=false;alert(e.message);});
+    .then(r=>{slog('login_success',{username:r.user.username});localStorage.setItem('fc_user',r.user.username);localStorage.setItem('fc_name',r.user.name);connectApp(r.user.username,r.user.name);})
+    .catch(e=>{slog('login_failed',{username:u,err:e.message});$('loginBtn').textContent='Sign In';$('loginBtn').disabled=false;alert(e.message);});
 };
 
 $('regBtn').onclick = () => {
@@ -56,10 +69,12 @@ $('regBtn').onclick = () => {
   if (!u||!n||!p) return alert('Fill all fields');
   if (u.includes(' ')) return alert('No spaces in username');
   $('regBtn').textContent='Creating…'; $('regBtn').disabled=true;
+  myUsername=u;
+  slog('register_click',{username:u,name:n});
   fetch(`${HTTP_URL}/api/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,name:n,password:p})})
     .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Registration failed');}))
-    .then(()=>{localStorage.setItem('fc_user',u);localStorage.setItem('fc_name',n);connectApp(u,n);})
-    .catch(e=>{$('regBtn').textContent='Create Account';$('regBtn').disabled=false;alert(e.message);});
+    .then(()=>{slog('register_success',{username:u});localStorage.setItem('fc_user',u);localStorage.setItem('fc_name',n);connectApp(u,n);})
+    .catch(e=>{slog('register_failed',{username:u,err:e.message});$('regBtn').textContent='Create Account';$('regBtn').disabled=false;alert(e.message);});
 };
 
 $('logoutBtn').onclick = () => {
@@ -74,12 +89,14 @@ $('logoutBtn').onclick = () => {
 ═══════════════════════════════════════════ */
 function connectApp(username, name) {
   myUsername=username; myName=name;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  slog('client_ready',{ua:navigator.userAgent, audioWorklet:!!(AC&&AC.prototype&&('audioWorklet' in AC.prototype))});
   $('myName').textContent=name; $('myUser').textContent=username;
   $('loginPage').classList.add('hide'); $('registerPage').classList.add('hide'); $('mainPage').classList.remove('hide');
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
-  ws.onopen=()=>{loadContacts();refreshInterval=setInterval(loadContacts,5000);};
+  ws.onopen=()=>{slog('ws_open',{});loadContacts();refreshInterval=setInterval(loadContacts,5000);};
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
-  ws.onclose=()=>{if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
+  ws.onclose=()=>{slog('ws_close',{});if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
 }
 
 function handleMsg(msg) {
@@ -120,7 +137,7 @@ function handleMsg(msg) {
       break;
 
     case 'audio':
-      if (currentCallId===msg.callId && msg.data) receiveAudio(msg.data);
+      if (currentCallId===msg.callId && msg.data) receiveAudio(msg.data, msg.sampleRate || SAMPLE_RATE);
       break;
 
     case 'chat':
@@ -177,6 +194,7 @@ async function startCapture(){
     micStream=await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}
     });
+    slog('mic_granted',{tracks:micStream.getAudioTracks().map(t=>({label:t.label,enabled:t.enabled,muted:t.muted,readyState:t.readyState}))});
   }catch(e){
     alert('Mic denied: '+e.message);
     audioStarted=false;
@@ -184,14 +202,42 @@ async function startCapture(){
     return;
   }
 
-  // Create AudioContext at device native rate, then downsample to 16kHz
   captureCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(captureCtx.state==='suspended')await captureCtx.resume();
   const nativeRate=captureCtx.sampleRate;
   slog('capture_start',{nativeRate,ua:navigator.userAgent.substring(0,60)});
 
   captureSource=captureCtx.createMediaStreamSource(micStream);
+  captureGain=captureCtx.createGain();
+  captureGain.gain.value=0;
 
-  // ScriptProcessor: bufferSize must be power of 2
+  if(captureCtx.audioWorklet){
+    try{
+      await captureCtx.audioWorklet.addModule('/js/pcm-recorder.js?v=1');
+      captureNode=new AudioWorkletNode(captureCtx,'pcm-recorder',{
+        numberOfInputs:1,
+        numberOfOutputs:1,
+        outputChannelCount:[1]
+      });
+      captureNode.port.onmessage=e=>{
+        if(!currentCallId||isMuted||!e.data||e.data.type!=='pcm')return;
+        const bytes=new Uint8Array(e.data.buffer);
+        let bin='';
+        for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+        txAudioChunks++;
+        if(txAudioChunks<=5||txAudioChunks%25===0)slog('tx_audio_chunk',{mode:'audioWorklet',chunk:txAudioChunks,bytes:bytes.length,ctxState:captureCtx.state});
+        send({type:'audio',callId:currentCallId,data:btoa(bin),sampleRate:SAMPLE_RATE});
+      };
+      captureSource.connect(captureNode);
+      captureNode.connect(captureGain);
+      captureGain.connect(captureCtx.destination);
+      slog('capture_mode',{mode:'audioWorklet'});
+      return;
+    }catch(e){
+      slog('worklet_failed',{err:e.message});
+    }
+  }
+
   captureProc=captureCtx.createScriptProcessor(PROC_BUFFER,1,1);
 
   captureProc.onaudioprocess=e=>{
@@ -209,23 +255,26 @@ async function startCapture(){
     const bytes=new Uint8Array(pcm.buffer);
     let bin='';
     for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
-    send({type:'audio',callId:currentCallId,data:btoa(bin)});
+    txAudioChunks++;
+    if(txAudioChunks<=5||txAudioChunks%25===0)slog('tx_audio_chunk',{mode:'scriptProcessor',chunk:txAudioChunks,bytes:bytes.length,ctxState:captureCtx.state});
+    send({type:'audio',callId:currentCallId,data:btoa(bin),sampleRate:SAMPLE_RATE});
   };
 
-  // MUST connect to destination (via silent gain) or mobile Chrome kills the node
-  const silentGain=captureCtx.createGain();
-  silentGain.gain.value=0;
   captureSource.connect(captureProc);
-  captureProc.connect(silentGain);
-  silentGain.connect(captureCtx.destination);
+  captureProc.connect(captureGain);
+  captureGain.connect(captureCtx.destination);
+  slog('capture_mode',{mode:'scriptProcessor'});
 }
 
 function stopCapture(){
   audioStarted=false;
+  slog('capture_stop',{txAudioChunks});
+  try{if(captureNode)captureNode.disconnect();}catch(e){}
   try{if(captureProc)captureProc.disconnect();}catch(e){}
   try{if(captureSource)captureSource.disconnect();}catch(e){}
+  try{if(captureGain)captureGain.disconnect();}catch(e){}
   try{if(captureCtx)captureCtx.close();}catch(e){}
-  captureProc=null;captureSource=null;captureCtx=null;
+  captureProc=null;captureNode=null;captureSource=null;captureGain=null;captureCtx=null;
   if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}
 }
 
@@ -237,20 +286,63 @@ function stopCapture(){
    - Raw PCM16 → Float32 → AudioBuffer → play
    - Scheduled so no gaps or overlaps
 ═══════════════════════════════════════════ */
-function ensurePlayCtx(){
-  if(!playCtx||playCtx.state==='closed'){
-    playCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
-    playNextTime=0;
-    slog('playctx_created',{state:playCtx.state});
-  }
-  if(playCtx.state==='suspended'){
-    playCtx.resume().then(()=>slog('playctx_resumed',{}));
+function resampleFloat32(input, fromRate, toRate) {
+  fromRate = Number(fromRate) || SAMPLE_RATE;
+  toRate = Number(toRate) || SAMPLE_RATE;
+  if (Math.abs(fromRate - toRate) < 1) return input;
+  const ratio = fromRate / toRate;
+  const out = new Float32Array(Math.max(1, Math.floor(input.length / ratio)));
+  for (let i = 0; i < out.length; i++) out[i] = input[Math.min(input.length - 1, Math.floor(i * ratio))];
+  return out;
+}
+
+function unlockAudioOutput() {
+  if (!playCtx || playCtx.state === 'closed') return;
+  try {
+    const buffer = playCtx.createBuffer(1, 1, playCtx.sampleRate || SAMPLE_RATE);
+    const src = playCtx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(playGain || playCtx.destination);
+    src.start(0);
+    slog('audio_output_unlocked', { state: playCtx.state, sampleRate: playCtx.sampleRate, mode: playMode });
+  } catch (e) {
+    slog('audio_unlock_failed', { err: e.message, state: playCtx ? playCtx.state : 'none' });
   }
 }
 
-function receiveAudio(b64){
-  ensurePlayCtx();
-  if(!playCtx||playCtx.state==='closed')return;
+async function ensurePlayCtx(){
+  if(!playCtx||playCtx.state==='closed'){
+    playCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+    playNextTime=0;
+    playNode=null;
+    playGain=playCtx.createGain();
+    playGain.gain.value=2.0;
+    playGain.connect(playCtx.destination);
+    slog('playctx_created',{state:playCtx.state,sampleRate:playCtx.sampleRate});
+  }
+  if(playCtx.state==='suspended'){
+    await playCtx.resume().then(()=>slog('playctx_resumed',{state:playCtx.state})).catch(e=>slog('playctx_resume_failed',{err:e.message,state:playCtx.state}));
+  }
+  if(!playNode && playCtx.audioWorklet){
+    try{
+      await playCtx.audioWorklet.addModule('/js/audio-processor.js?v=2');
+      playNode=new AudioWorkletNode(playCtx,'pcm-player',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1]});
+      playNode.connect(playGain);
+      playMode='worklet';
+      slog('playback_mode',{mode:playMode,state:playCtx.state,sampleRate:playCtx.sampleRate});
+    }catch(e){
+      playMode='buffer';
+      slog('playworklet_failed',{err:e.message});
+    }
+  }
+  unlockAudioOutput();
+}
+
+async function receiveAudio(b64, sourceRate){
+  rxAudioChunks++;
+  if(rxAudioChunks<=5||rxAudioChunks%25===0)slog('rx_audio_chunk',{chunk:rxAudioChunks,b64Length:b64.length,sourceRate,playState:playCtx?playCtx.state:'none',visibility:document.visibilityState});
+  await ensurePlayCtx();
+  if(!playCtx||playCtx.state==='closed'){slog('rx_drop_no_playctx',{chunk:rxAudioChunks});return;}
 
   // base64 → Int16Array
   let pcm;
@@ -266,31 +358,55 @@ function receiveAudio(b64){
   const f32=new Float32Array(pcm.length);
   for(let i=0;i<pcm.length;i++)f32[i]=pcm[i]/(pcm[i]<0?0x8000:0x7FFF);
 
-  // Create AudioBuffer and schedule
-  const ab=playCtx.createBuffer(1,f32.length,SAMPLE_RATE);
-  ab.copyToChannel(f32,0);
+  if(playNode){
+    try{
+      const out = resampleFloat32(f32, sourceRate, playCtx.sampleRate);
+      const sampleCount = out.length;
+      // Must transfer the buffer, not copy — otherwise samples arrive empty
+      playNode.port.postMessage({type:'chunk', samples: out}, [out.buffer]);
+      playedAudioChunks++;
+      if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_queued',{chunk:playedAudioChunks,samples:sampleCount,sourceRate,ctxRate:playCtx.sampleRate,state:playCtx.state,mode:playMode});
+      return;
+    }catch(e){
+      slog('play_worklet_queue_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state});
+    }
+  }
 
-  const src=playCtx.createBufferSource();
-  src.buffer=ab;
-  src.connect(playCtx.destination);
+  // Fallback: Create AudioBuffer and schedule
+  try{
+    const ab=playCtx.createBuffer(1,f32.length,Number(sourceRate)||SAMPLE_RATE);
+    ab.copyToChannel(f32,0);
 
-  const now=playCtx.currentTime;
-  // If we've fallen behind (e.g. tab was hidden), reset
-  if(playNextTime<now+0.01)playNextTime=now+0.05;
-  src.start(playNextTime);
-  playNextTime+=ab.duration;
+    const src=playCtx.createBufferSource();
+    src.buffer=ab;
+    src.connect(playGain || playCtx.destination);
+
+    const now=playCtx.currentTime;
+    if(playNextTime<now+0.01)playNextTime=now+0.05;
+    const scheduledAt=playNextTime;
+    src.start(scheduledAt);
+    playNextTime+=ab.duration;
+    playedAudioChunks++;
+    if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_scheduled',{chunk:playedAudioChunks,duration:ab.duration,scheduledAt,now,state:playCtx.state,outputLatency:playCtx.outputLatency||null});
+  }catch(e){
+    slog('play_audio_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state});
+  }
 }
 
 function cleanupPlayback(){
+  slog('playback_cleanup',{rxAudioChunks,playedAudioChunks,state:playCtx?playCtx.state:'none'});
+  try{if(playNode){playNode.port.postMessage({type:'clear'});playNode.disconnect();}}catch(e){}
+  try{if(playGain)playGain.disconnect();}catch(e){}
   try{if(playCtx)playCtx.close();}catch(e){}
-  playCtx=null;playNextTime=0;
+  playCtx=null;playNode=null;playGain=null;playNextTime=0;playMode='buffer';
 }
 
 /* ═══════════════════════════════════════════
    CALL UI
 ═══════════════════════════════════════════ */
-function startCall(username,name){
-  ensurePlayCtx(); // create from user gesture
+async function startCall(username,name){
+  txAudioChunks=0;rxAudioChunks=0;playedAudioChunks=0;
+  await ensurePlayCtx(); // create/unlock from user gesture
   $('callDisplayName').textContent=name;
   $('callAvatarLetter').textContent=name.charAt(0).toUpperCase();
   $('callStatusText').textContent='Calling…';
@@ -307,10 +423,10 @@ $('callEndBtn').onclick=()=>{
   endCallUI();
 };
 
-$('acceptBtn').onclick=()=>{
+$('acceptBtn').onclick=async()=>{
   if(!currentCallId||!ws)return;
   stopRing();
-  ensurePlayCtx(); // create from user gesture
+  await ensurePlayCtx(); // create/unlock from user gesture
   send({type:'accept_call',callId:currentCallId});
   $('callDisplayName').textContent=$('incomingName').textContent;
   $('callAvatarLetter').textContent=$('incomingName').textContent.charAt(0).toUpperCase();
@@ -320,6 +436,7 @@ $('acceptBtn').onclick=()=>{
   $('callingPage').classList.remove('hide');
   startCallTimer();
   audioStarted=false;
+  txAudioChunks=0;rxAudioChunks=0;playedAudioChunks=0;
   startCapture();
 };
 
@@ -382,8 +499,8 @@ async function loadContacts(){
         <div class="contact-user">@${u.username} · ${u.online?'Online':'Offline'}</div>
       </div>
       <div class="contact-actions">
-        <button class="action-btn chat-btn-sm" onclick="openChat('${u.username}','${u.name}')">💬</button>
-        <button class="action-btn call-btn" onclick="startCall('${u.username}','${u.name}')">📞</button>
+        <button class="action-btn chat-btn-sm" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">💬</button>
+        <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">📞</button>
       </div>
     </div>`).join('');
   loadChatContacts();
@@ -406,7 +523,7 @@ function loadChatContacts(){
     const others=users.filter(u=>u.username!==myUsername);
     fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(data=>{
       $('chatContactsList').innerHTML=others.map(u=>`
-        <div class="contact-item" onclick="openChat('${u.username}','${u.name}')">
+        <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
           <div class="contact-avatar" style="background:#5c6bc0">${u.name.charAt(0).toUpperCase()}</div>
           <div class="contact-info"><div class="contact-name">${u.name}</div>
           <div class="contact-user">${data[u.username]?data[u.username].length+' messages':'Start a conversation'}</div></div>
