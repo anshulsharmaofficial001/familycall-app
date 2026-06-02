@@ -244,6 +244,14 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
       <input class="search-input" id="searchUser" placeholder="🔍 Search by username...">
       <button class="search-btn" id="callUserBtn">Search</button>
     </div>
+    <!-- Feature Buttons Row -->
+    <div style="display:flex;gap:8px;padding:10px 16px;overflow-x:auto;background:#fff;border-bottom:1px solid #EDF2F7">
+      <button class="feat-btn" onclick="openLocationMap()">📍 Map</button>
+      <button class="feat-btn" onclick="openVoiceStatusModal()">🎙️ Status</button>
+      <button class="feat-btn" id="sosBtn" style="background:#FFEBEE;color:#C62828;border-color:#EF9A9A">🆘 SOS</button>
+      <button class="feat-btn" onclick="openGroupsModal()">👨‍👩‍👧‍👦 Groups</button>
+      <button class="feat-btn" onclick="pauseLocationTracking(60)">⏸️ Pause</button>
+    </div>
     <div id="searchResults"></div>
     <div id="pendingRequests"></div>
     <div class="contacts-list" id="contactsList"></div>
@@ -353,5 +361,69 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
 </div>
 
-<script src="/js/app.js?v=fc3"></script>
+<!-- SOS Confirmation Overlay (sender sees this) -->
+<div id="sosOverlay" class="modal-overlay hide">
+  <div class="modal-card" style="background:#FFEBEE;border:2px solid #EF9A9A;text-align:center">
+    <div style="font-size:48px;margin-bottom:8px">🆘</div>
+    <h3 style="color:#C62828">SOS Alert Sent!</h3>
+    <p style="font-size:14px;color:#555;margin:12px 0">Your family has been alerted with your location.</p>
+    <a id="sosLocationLink" href="#" target="_blank" class="main-btn" style="display:block;margin-bottom:12px;background:#1565C0;color:#fff;padding:12px;border-radius:14px;text-decoration:none;font-weight:700">📍 View My Location</a>
+    <button class="main-btn" onclick="cancelSOS()" style="background:#4CAF50">✅ Cancel — I'm Safe</button>
+  </div>
+</div>
+
+<!-- SOS Alert Overlay (receiver sees this) -->
+<div id="sosAlertOverlay" class="modal-overlay hide" style="background:rgba(198,40,40,0.92)">
+  <div class="modal-card" style="background:#fff;text-align:center">
+    <div style="font-size:56px;margin-bottom:8px;animation:incoming-ring 0.5s infinite">🆘</div>
+    <h3 style="color:#C62828;font-size:22px">EMERGENCY ALERT!</h3>
+    <p style="font-size:16px;font-weight:700;color:#333;margin:10px 0"><span id="sosAlertName">Someone</span> needs help!</p>
+    <a id="sosAlertMapLink" href="#" target="_blank" class="main-btn" style="display:block;margin:12px 0;background:#C62828;color:#fff;padding:14px;border-radius:14px;text-decoration:none;font-weight:800;font-size:16px">🗺️ Show Route</a>
+    <button class="cancel-btn" onclick="document.getElementById('sosAlertOverlay').classList.add('hide')">Close</button>
+  </div>
+</div>
+
+<!-- Location Map Modal -->
+<div id="locationMapModal" class="modal-overlay hide">
+  <div class="modal-card" style="width:95%;max-width:500px;padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0">📍 Family Location</h3>
+      <button onclick="closeLocationMap()" class="icon-btn">✕</button>
+    </div>
+    <div id="locationMap" style="height:350px;border-radius:16px;overflow:hidden;background:#EDF2F7"></div>
+    <button class="main-btn" style="margin-top:12px" onclick="refreshMapLocations()">🔄 Refresh</button>
+  </div>
+</div>
+
+<!-- Voice Status Modal -->
+<div id="voiceStatusModal" class="modal-overlay hide">
+  <div class="modal-card" style="text-align:center">
+    <h3>🎙️ Voice Status</h3>
+    <p style="font-size:13px;color:var(--text2);margin:8px 0 16px">Record a voice note for your family (24hrs)</p>
+    <button id="vsRecordBtn" class="main-btn" onclick="recordVoiceStatus()">🎙️ Record Status</button>
+    <div id="vsStatusList" style="margin-top:16px;text-align:left"></div>
+    <button class="cancel-btn" style="margin-top:12px" onclick="document.getElementById('voiceStatusModal').classList.add('hide')">Close</button>
+  </div>
+</div>
+
+<!-- Groups Modal -->
+<div id="groupsModal" class="modal-overlay hide">
+  <div class="modal-card">
+    <h3>👨‍👩‍👧‍👦 Family Groups</h3>
+    <div id="groupsList" style="margin:12px 0"></div>
+    <div style="border-top:1px solid #EDF2F7;padding-top:14px;margin-top:8px">
+      <p style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:8px">Create New Group</p>
+      <input id="newGroupName" class="search-input" placeholder="Group name (e.g. My Family)" style="margin-bottom:8px">
+      <button class="main-btn" onclick="createGroup()">+ Create Group</button>
+    </div>
+    <button class="cancel-btn" style="margin-top:10px" onclick="document.getElementById('groupsModal').classList.add('hide')">Close</button>
+  </div>
+</div>
+
+<style>
+.feat-btn{background:#F0F4FF;border:1.5px solid #C7D7F5;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:700;color:#2C6FAC;cursor:pointer;white-space:nowrap;font-family:Nunito,sans-serif;transition:all .2s;flex-shrink:0}
+.feat-btn:active{background:#D6E4FF}
+</style>
+
+<script src="/js/app.js?v=fc8"></script>
 </body></html>

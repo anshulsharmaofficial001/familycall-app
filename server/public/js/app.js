@@ -1,4 +1,4 @@
-// FamilyCall v7 - PCM16 pure audio + friend system + superadmin + notifications
+// FamilyCall v8 - Complete Family App
 'use strict';
 const WS_PROTO = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL   = `${WS_PROTO}//${location.host}`;
@@ -6,43 +6,27 @@ const HTTP_URL = location.origin;
 
 let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
 let myUsername = '', myName = '', myRole = 'user', chatTarget = '', refreshInterval = null;
+let myAvatar = null, myDob = null;
 
 /* ── Audio ── */
-let micStream     = null;
-let audioStarted  = false;
-let isMuted       = false;
-let isOnHold      = false;
-
-/* Capture via AudioContext → PCM16 (no MediaRecorder, no codec issues) */
-let captureCtx    = null;
-let captureSource = null;
-let captureProc   = null;
-let captureNode   = null;
-let captureGain   = null;
-
-/* Playback via AudioContext → scheduled PCM16 */
-let playCtx       = null;
-let playNextTime  = 0;
-let playNode      = null;
-let playGain      = null;
-let playMode      = 'buffer';
-let txAudioChunks = 0;
-let rxAudioChunks = 0;
-let playedAudioChunks = 0;
-
-/* Speaker / output routing */
+let micStream = null, audioStarted = false, isMuted = false, isOnHold = false;
+let captureCtx = null, captureSource = null, captureProc = null, captureNode = null, captureGain = null;
+let playCtx = null, playNextTime = 0, playNode = null, playGain = null, playMode = 'buffer';
+let txAudioChunks = 0, rxAudioChunks = 0, playedAudioChunks = 0;
 let speakerActive = false;
 
 /* Ring */
 let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
 
-const $ = id => document.getElementById(id);
-
-/* ── State ── */
+/* State */
 let callerInfoStore = {name:'',username:'',avatar:null};
 let friendsCache = [];
-let myAvatar = null;
-let myRole = '';
+let myGroupsCache = [];
+let batteryCache = {}; // username -> level
+let locationWatchId = null;
+let locationPaused = false;
+let activeSosId = null;
+let currentGroupId = null; // for group chat
 
 /* ── Avatar helper ── */
 function setAvatarEl(el, name, avatarB64, isCreator) {
@@ -174,6 +158,10 @@ function connectApp(username, name, role) {
     if(u.role) myRole=u.role;
     if(u.name) myName=u.name;
     updateTopbar();
+    // Start new features after profile loaded
+    startBatteryMonitor();
+    startLocationTracking();
+    loadGroups();
   }).catch(()=>{ updateTopbar(); });
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
   ws.onopen=()=>{slog('ws_open',{});loadContacts();refreshInterval=setInterval(loadContacts,8000);};
@@ -248,7 +236,57 @@ function handleMsg(msg) {
 
     case 'friend_accepted':
       loadContacts();
-      showToast('✅ ' + (msg.withName || msg.with) + ' is now your friend!');
+      showToast('✅ ' + (msg.byName || msg.by) + ' is now your friend!');
+      break;
+
+    case 'friend_online':
+      updateContactOnlineStatus(msg.username, true);
+      break;
+
+    case 'friend_offline':
+      updateContactOnlineStatus(msg.username, false);
+      break;
+
+    case 'battery_update':
+      batteryCache[msg.username] = { level: msg.level, charging: msg.charging };
+      updateBatteryDot(msg.username, msg.level, msg.charging);
+      if (msg.level <= 5) showToast(`🔴 ${msg.name || msg.username} battery critically low: ${Math.round(msg.level*100)}%`);
+      else if (msg.level <= 15) showToast(`🟡 ${msg.name || msg.username} battery low: ${Math.round(msg.level*100)}%`);
+      break;
+
+    case 'location_update':
+      updateFriendLocation(msg);
+      break;
+
+    case 'sos_alert':
+      handleSOSAlert(msg);
+      break;
+
+    case 'sos_cancelled':
+      handleSOSCancelled(msg);
+      break;
+
+    case 'new_voice_status':
+      showVoiceStatusRing(msg.username, msg.avatar, msg.name);
+      break;
+
+    case 'group_chat':
+      if (currentGroupId === msg.groupId) {
+        appendGroupMsg(msg.fromName||msg.from, msg.text, false, msg.voiceData, msg.voiceMime);
+      }
+      showToast(`💬 ${msg.fromName||msg.from}: ${msg.text||'🎤'}`);
+      break;
+
+    case 'paging':
+      handlePaging(msg);
+      break;
+
+    case 'birthday_today':
+      showBirthdayAlert(msg.name);
+      break;
+
+    case 'added_to_group':
+      loadGroups(); showToast('🎉 Added to a group!');
       break;
 
     case 'error': alert(msg.message); break;
@@ -833,13 +871,18 @@ function openChat(username,name){
 
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function closeChatArea(){$('chatAreaView').classList.add('hide');$('chatListView').classList.remove('hide');chatTarget='';}
+function closeChatArea(){$('chatAreaView').classList.add('hide');$('chatListView').classList.remove('hide');chatTarget='';currentGroupId=null;}
 
 $('chatSendBtn').onclick=()=>{
   const t=$('chatInput').value.trim();
-  if(!t||!chatTarget)return;
-  send({type:'chat',to:chatTarget,text:t});
-  appendChatMsg(myUsername,t,true);
+  if(!t) return;
+  if(currentGroupId){
+    send({type:'group_chat', groupId:currentGroupId, text:t});
+    appendGroupMsg(myName, t, true);
+  } else if(chatTarget){
+    send({type:'chat',to:chatTarget,text:t});
+    appendChatMsg(myUsername,t,true);
+  }
   $('chatInput').value='';
 };
 $('chatInput').onkeydown=e=>{if(e.key==='Enter')$('chatSendBtn').click();};
@@ -1009,6 +1052,478 @@ document.addEventListener('DOMContentLoaded', ()=>{
 })();
 
 /* ═══════════════════════════════════════════
+   NEW FEATURES MODULE
+═══════════════════════════════════════════ */
+
+/* ── Toast (warm style) ── */
+function showToast(message, duration=3500) {
+  let t = document.getElementById('toastMsg');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toastMsg';
+    t.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#fff;color:#2D3748;padding:12px 20px;font-size:14px;font-weight:700;z-index:9999;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.15);pointer-events:none;transition:opacity .3s;max-width:300px;text-align:center;font-family:Nunito,sans-serif';
+    document.body.appendChild(t);
+  }
+  t.textContent = message;
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(() => { t.style.opacity = '0'; }, duration);
+}
+
+/* ── Battery Monitoring ── */
+async function startBatteryMonitor() {
+  if (!('getBattery' in navigator)) return;
+  try {
+    const battery = await navigator.getBattery();
+    const report = () => {
+      fetch(`${HTTP_URL}/api/battery`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ username: myUsername, level: battery.level, charging: battery.charging })
+      }).catch(()=>{});
+    };
+    report();
+    battery.addEventListener('levelchange', report);
+    battery.addEventListener('chargingchange', report);
+  } catch(e) {}
+}
+
+function updateBatteryDot(username, level, charging) {
+  const dot = document.querySelector(`.battery-dot[data-user="${username}"]`);
+  if (!dot) return;
+  const pct = Math.round((level||0) * 100);
+  dot.style.background = charging ? '#4CAF50' : pct > 30 ? '#4CAF50' : pct > 15 ? '#FF9800' : '#F44336';
+  dot.title = `Battery: ${pct}%${charging?' ⚡':''}`;
+}
+
+function updateContactOnlineStatus(username, online) {
+  const dots = document.querySelectorAll(`.status-dot[data-user="${username}"]`);
+  dots.forEach(d => { d.className = `status-dot ${online?'dot-on':'dot-off'}`; d.dataset.user = username; });
+}
+
+/* ── Location Tracking ── */
+function startLocationTracking() {
+  if (!navigator.geolocation || locationPaused) return;
+  if (locationWatchId) navigator.geolocation.clearWatch(locationWatchId);
+  locationWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      fetch(`${HTTP_URL}/api/location`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ username: myUsername, lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+      }).catch(()=>{});
+    },
+    ()=>{},
+    { enableHighAccuracy: true, maximumAge: 60000, timeout: 30000 }
+  );
+}
+
+function pauseLocationTracking(minutes) {
+  locationPaused = true;
+  if (locationWatchId) { navigator.geolocation.clearWatch(locationWatchId); locationWatchId = null; }
+  showToast(`📍 Location paused for ${minutes} min`);
+  setTimeout(() => { locationPaused = false; startLocationTracking(); showToast('📍 Location sharing resumed'); }, minutes * 60 * 1000);
+}
+
+function updateFriendLocation(msg) {
+  // Update map if open
+  const mapEl = document.getElementById('locationMap');
+  if (mapEl && window._leafletMap) {
+    if (!window._locationMarkers) window._locationMarkers = {};
+    const latlng = [msg.lat, msg.lng];
+    if (window._locationMarkers[msg.username]) {
+      window._locationMarkers[msg.username].setLatLng(latlng);
+    } else {
+      const marker = window.L.marker(latlng).addTo(window._leafletMap)
+        .bindPopup(`<b>${msg.name||msg.username}</b>`);
+      window._locationMarkers[msg.username] = marker;
+    }
+  }
+}
+
+/* ── SOS System ── */
+let sosHoldTimer = null;
+let sosCountdown = 0;
+
+function initSOSButton() {
+  const btn = document.getElementById('sosBtn');
+  if (!btn) return;
+
+  btn.addEventListener('touchstart', startSOSHold);
+  btn.addEventListener('mousedown', startSOSHold);
+  btn.addEventListener('touchend', cancelSOSHold);
+  btn.addEventListener('mouseup', cancelSOSHold);
+  btn.addEventListener('mouseleave', cancelSOSHold);
+}
+
+function startSOSHold() {
+  sosCountdown = 3;
+  const btn = document.getElementById('sosBtn');
+  if (btn) btn.textContent = `🆘 Hold... ${sosCountdown}`;
+  sosHoldTimer = setInterval(() => {
+    sosCountdown--;
+    if (btn) btn.textContent = sosCountdown > 0 ? `🆘 Hold... ${sosCountdown}` : '🆘 Sending...';
+    if (sosCountdown <= 0) {
+      clearInterval(sosHoldTimer);
+      triggerSOS();
+    }
+  }, 1000);
+}
+
+function cancelSOSHold() {
+  if (sosHoldTimer) { clearInterval(sosHoldTimer); sosHoldTimer = null; }
+  const btn = document.getElementById('sosBtn');
+  if (btn && sosCountdown > 0) btn.textContent = '🆘 SOS';
+}
+
+function triggerSOS() {
+  const btn = document.getElementById('sosBtn');
+  if (btn) btn.textContent = '🆘 SOS Sent!';
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    send({ type: 'sos_ws', lat, lng, groupId: myGroupsCache[0]?.id || null });
+    activeSosId = `sos_${Date.now()}`;
+    showSOSConfirmation(lat, lng);
+  }, () => {
+    send({ type: 'sos_ws', lat: null, lng: null, groupId: myGroupsCache[0]?.id || null });
+    showSOSConfirmation(null, null);
+  });
+  // Re-enable after 10 seconds
+  setTimeout(() => { if (btn) btn.textContent = '🆘 SOS'; }, 10000);
+}
+
+function showSOSConfirmation(lat, lng) {
+  const overlay = document.getElementById('sosOverlay');
+  if (!overlay) return;
+  const mapsLink = lat ? `https://maps.google.com/?q=${lat},${lng}` : null;
+  document.getElementById('sosLocationLink').href = mapsLink || '#';
+  document.getElementById('sosLocationLink').style.display = mapsLink ? 'block' : 'none';
+  overlay.classList.remove('hide');
+}
+
+function cancelSOS() {
+  if (activeSosId) send({ type: 'sos_cancel', sosId: activeSosId });
+  activeSosId = null;
+  const overlay = document.getElementById('sosOverlay');
+  if (overlay) overlay.classList.add('hide');
+  showToast('✅ SOS cancelled — Family notified');
+}
+
+function handleSOSAlert(msg) {
+  // Show alert overlay
+  const overlay = document.getElementById('sosAlertOverlay');
+  if (!overlay) { alert(`🆘 SOS from ${msg.name||msg.from}! ${msg.mapsLink||''}`); return; }
+  document.getElementById('sosAlertName').textContent = msg.name || msg.from;
+  const link = document.getElementById('sosAlertMapLink');
+  if (link) { link.href = msg.mapsLink||'#'; link.style.display = msg.mapsLink?'inline-block':'none'; }
+  overlay.classList.remove('hide');
+  // Vibrate
+  if ('vibrate' in navigator) navigator.vibrate([500,200,500,200,500]);
+  // Play alert sound
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    for (let i=0;i<3;i++) {
+      const osc = ctx.createOscillator(); const g = ctx.createGain();
+      osc.connect(g); g.connect(ctx.destination);
+      osc.frequency.value = 880; g.gain.value = 0.5;
+      osc.start(ctx.currentTime + i*0.5);
+      osc.stop(ctx.currentTime + i*0.5 + 0.3);
+    }
+  } catch(e) {}
+}
+
+function handleSOSCancelled(msg) {
+  const overlay = document.getElementById('sosAlertOverlay');
+  if (overlay) overlay.classList.add('hide');
+  showToast(`✅ ${msg.name||msg.from}: Everything is OK, false alarm`);
+}
+
+/* ── Voice Status ── */
+let vsRecorder = null, vsStream = null, vsChunks = [], vsRecording = false;
+
+async function recordVoiceStatus() {
+  const btn = document.getElementById('vsRecordBtn');
+  if (vsRecording) {
+    vsRecording = false;
+    if (btn) btn.textContent = '🎙️ Record Status';
+    if (vsRecorder && vsRecorder.state !== 'inactive') vsRecorder.stop();
+    return;
+  }
+  try {
+    vsStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    vsChunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/mp4';
+    vsRecorder = new MediaRecorder(vsStream, { mimeType: mime });
+    vsRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) vsChunks.push(e.data); };
+    vsRecorder.onstop = async () => {
+      const blob = new Blob(vsChunks, { type: vsRecorder.mimeType });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const b64 = reader.result;
+        fetch(`${HTTP_URL}/api/voice-status`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ username: myUsername, audioData: b64, audioMime: vsRecorder.mimeType })
+        }).then(()=>showToast('✅ Voice status posted! (24hr)')).catch(()=>{});
+      };
+      reader.readAsDataURL(blob);
+      if (vsStream) vsStream.getTracks().forEach(t=>t.stop());
+    };
+    vsRecorder.start();
+    vsRecording = true;
+    if (btn) btn.textContent = '⏹️ Stop Recording';
+    // Auto-stop after 60 seconds
+    setTimeout(() => { if (vsRecording) { vsRecording=false; if(btn)btn.textContent='🎙️ Record Status'; if(vsRecorder&&vsRecorder.state!=='inactive')vsRecorder.stop(); } }, 60000);
+  } catch(e) { alert('Mic denied: ' + e.message); }
+}
+
+async function playVoiceStatus(username) {
+  try {
+    const r = await fetch(`${HTTP_URL}/api/voice-status/${username}`).then(res=>res.json());
+    if (!r.hasStatus) { showToast('No status available'); return; }
+    const audio = new Audio(r.audioData);
+    audio.play().catch(()=>{});
+  } catch(e) {}
+}
+
+function showVoiceStatusRing(username, avatar, name) {
+  const el = document.querySelector(`.contact-avatar[data-vsuser="${username}"]`);
+  if (el) el.style.outline = '3px solid #FF9800';
+}
+
+/* ── Voice Broadcast (Paging) ── */
+async function sendPaging(groupId) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/mp4';
+    const recorder = new MediaRecorder(stream, { mimeType: mime });
+    const chunks = [];
+    recorder.ondataavailable = e => { if(e.data&&e.data.size>0) chunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mime });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        send({ type: 'paging', groupId, audioData: reader.result, audioMime: mime });
+        showToast('📢 Broadcast sent!');
+      };
+      reader.readAsDataURL(blob);
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    recorder.start();
+    showToast('🎙️ Recording... (5 sec)');
+    setTimeout(() => recorder.stop(), 5000);
+  } catch(e) { alert('Mic denied: ' + e.message); }
+}
+
+function handlePaging(msg) {
+  // Play on speaker if not silent
+  const audio = new Audio(msg.audioData);
+  audio.play().catch(()=>{
+    // Blocked — show flash overlay
+    showToast(`📢 ${msg.fromName||msg.from} is announcing something! (check notifications)`);
+  });
+  showToast(`📢 Announcement from ${msg.fromName||msg.from}`);
+}
+
+/* ── Groups ── */
+async function loadGroups() {
+  try {
+    const groups = await fetch(`${HTTP_URL}/api/groups/${myUsername}`).then(r=>r.json());
+    myGroupsCache = groups;
+    renderGroupsInUI(groups);
+  } catch(e) {}
+}
+
+function renderGroupsInUI(groups) {
+  const el = document.getElementById('groupsList');
+  if (!el) return;
+  if (!groups.length) { el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2);font-size:13px">No groups yet<br><small>Create one below</small></div>'; return; }
+  el.innerHTML = groups.map(g => `
+    <div class="contact-item" onclick="openGroupChat('${g.id}','${g.name.replace(/'/g,"\\'")}')">
+      <div class="contact-avatar" style="background:linear-gradient(135deg,#FF9800,#F44336);font-size:22px">👨‍👩‍👧‍👦</div>
+      <div class="contact-info">
+        <div class="contact-name">${g.name}</div>
+        <div class="contact-sub">${g.role==='admin'?'👑 Admin':'Member'}</div>
+      </div>
+      ${g.role==='admin' ? `<button class="action-btn call-btn" onclick="event.stopPropagation();sendPaging('${g.id}')" title="Broadcast">📢</button>` : ''}
+    </div>`).join('');
+}
+
+function openGroupChat(groupId, groupName) {
+  currentGroupId = groupId;
+  const chatWith = document.getElementById('chatWith');
+  if (chatWith) chatWith.textContent = `👨‍👩‍👧‍👦 ${groupName}`;
+  const listView = document.getElementById('chatListView');
+  const areaView = document.getElementById('chatAreaView');
+  if (listView) listView.classList.add('hide');
+  if (areaView) areaView.classList.remove('hide');
+  fetch(`${HTTP_URL}/api/group-messages/${groupId}`).then(r=>r.json()).then(msgs => {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    chatMessages.innerHTML = msgs.map(m => `
+      <div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">
+        ${m.from!==myUsername?`<div style="font-size:10px;margin-bottom:4px;opacity:.7">${m.from}</div>`:''}
+        ${m.text||'🎤 Voice'}
+      </div>`).join('');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }).catch(()=>{});
+}
+
+function appendGroupMsg(fromName, text, mine, voiceData, voiceMime) {
+  const chatMessages = document.getElementById('chatMessages');
+  if (!chatMessages) return;
+  const div = document.createElement('div');
+  div.className = 'chat-msg ' + (mine ? 'chat-mine' : 'chat-other');
+  if (!mine) div.innerHTML = `<div style="font-size:10px;margin-bottom:4px;opacity:.7">${fromName}</div>`;
+  if (voiceData) {
+    const audio = document.createElement('audio');
+    audio.controls = true; audio.src = voiceData;
+    audio.style.cssText = 'width:200px;height:36px';
+    div.appendChild(audio);
+  } else {
+    div.appendChild(document.createTextNode(text||''));
+  }
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/* ── Birthday Alert ── */
+function showBirthdayAlert(name) {
+  showToast(`🎂 Today is ${name}'s birthday! Wish them!`, 8000);
+  // Show bigger alert
+  const msg = `🎉 Happy Birthday ${name}! 🎂\n\nTap OK to send a surprise call!`;
+  if (confirm(msg)) {
+    const friend = friendsCache.find(f=>f.name===name);
+    if (friend) startCall(friend.username, friend.name);
+  }
+}
+
+/* ── Translation (MyMemory API - free) ── */
+async function translateText(text, targetLang) {
+  try {
+    const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`);
+    const data = await r.json();
+    return data.responseData?.translatedText || text;
+  } catch(e) { return text; }
+}
+
+async function translateMessage(btnEl, text) {
+  btnEl.textContent = '⏳';
+  const lang = navigator.language.startsWith('hi') ? 'hi' : 'hi'; // default Hindi
+  const translated = await translateText(text, lang);
+  const parent = btnEl.closest('.chat-msg');
+  let transDiv = parent.querySelector('.translation');
+  if (!transDiv) {
+    transDiv = document.createElement('div');
+    transDiv.className = 'translation';
+    transDiv.style.cssText = 'font-size:11px;margin-top:4px;opacity:.8;border-top:1px solid rgba(0,0,0,0.1);padding-top:4px';
+    parent.appendChild(transDiv);
+  }
+  transDiv.textContent = '🌐 ' + translated;
+  btnEl.textContent = '🌐';
+}
+
+/* ── Location Map (Leaflet.js - free) ── */
+function openLocationMap() {
+  const mapModal = document.getElementById('locationMapModal');
+  if (!mapModal) return;
+  mapModal.classList.remove('hide');
+
+  if (!window._leafletMap) {
+    // Load Leaflet dynamically
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => initMap();
+    document.head.appendChild(script);
+  } else {
+    refreshMapLocations();
+  }
+}
+
+function initMap() {
+  const mapEl = document.getElementById('locationMap');
+  if (!mapEl || !window.L) return;
+  window._leafletMap = window.L.map('locationMap').setView([20.5937, 78.9629], 5);
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+  }).addTo(window._leafletMap);
+  window._locationMarkers = {};
+  refreshMapLocations();
+}
+
+async function refreshMapLocations() {
+  try {
+    const locs = await fetch(`${HTTP_URL}/api/locations/${myUsername}`).then(r=>r.json());
+    for (const loc of locs) {
+      if (!loc.lat) continue;
+      const latlng = [loc.lat, loc.lng];
+      const popupText = `<b>${loc.name||loc.username}</b><br>${new Date(loc.ts).toLocaleTimeString()}`;
+      if (window._locationMarkers && window._locationMarkers[loc.username]) {
+        window._locationMarkers[loc.username].setLatLng(latlng).setPopupContent(popupText);
+      } else if (window._leafletMap && window.L) {
+        const m = window.L.marker(latlng).addTo(window._leafletMap).bindPopup(popupText);
+        if (!window._locationMarkers) window._locationMarkers = {};
+        window._locationMarkers[loc.username] = m;
+      }
+    }
+    if (window._leafletMap) window._leafletMap.invalidateSize();
+  } catch(e) {}
+}
+
+function closeLocationMap() {
+  const mapModal = document.getElementById('locationMapModal');
+  if (mapModal) mapModal.classList.add('hide');
+}
+
+function openVoiceStatusModal() {
+  const modal = document.getElementById('voiceStatusModal');
+  if (!modal) return;
+  modal.classList.remove('hide');
+  // Load friends' statuses
+  fetch(`${HTTP_URL}/api/voice-statuses/${myUsername}`).then(r=>r.json()).then(statuses => {
+    const el = document.getElementById('vsStatusList');
+    if (!el) return;
+    if (!statuses.length) { el.innerHTML='<p style="font-size:12px;color:var(--text2);text-align:center">No family statuses yet</p>'; return; }
+    el.innerHTML = statuses.map(s => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F8F9FA;border-radius:12px;margin-bottom:6px;cursor:pointer" onclick="playVoiceStatus('${s.username}')">
+        <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#FF9800,#F44336);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:16px;border:3px solid #FF9800">${s.name.charAt(0)}</div>
+        <div><div style="font-weight:700;font-size:14px">${s.name}</div><div style="font-size:11px;color:var(--text2)">Tap to play</div></div>
+        <span style="margin-left:auto;font-size:20px">▶️</span>
+      </div>`).join('');
+  }).catch(()=>{});
+}
+
+function openGroupsModal() {
+  const modal = document.getElementById('groupsModal');
+  if (modal) { modal.classList.remove('hide'); loadGroups(); }
+}
+
+async function createGroup() {
+  const nameInput = document.getElementById('newGroupName');
+  const name = nameInput ? nameInput.value.trim() : '';
+  if (!name) { alert('Enter group name'); return; }
+  const members = friendsCache.map(f=>f.username);
+  try {
+    const r = await fetch(`${HTTP_URL}/api/groups/create`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, createdBy: myUsername, members })
+    }).then(res=>res.json());
+    if (r.success) {
+      showToast('✅ Group created!');
+      if (nameInput) nameInput.value = '';
+      loadGroups();
+    }
+  } catch(e) { alert('Error creating group'); }
+}
+
+/* ── declineFriend ── */
+function declineFriend(fromUsername) {
+  // Just ignore — no action needed server side for decline
+  showToast('Request ignored');
+  loadContacts();
+}
+
+/* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
 (async()=>{
@@ -1016,8 +1531,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
   if(u&&n){
     try{
       const res=await fetch(`${HTTP_URL}/api/user/${u}`);
-      if(res.ok) connectApp(u,n,r);
-      else{ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
+      if(res.ok){
+        connectApp(u,n,r);
+      } else{ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
     }catch(e){ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
   }
+  // Request notification permission
+  if('Notification' in window && Notification.permission==='default') Notification.requestPermission();
 })();
