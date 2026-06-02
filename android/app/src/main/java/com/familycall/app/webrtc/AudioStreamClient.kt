@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioAttributes
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
@@ -17,12 +18,18 @@ class AudioStreamClient(private val context: Context) {
     private val isRunning = AtomicBoolean(false)
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
+    private var audioManager: AudioManager? = null
+    private var previousAudioMode: Int = AudioManager.MODE_NORMAL
+    private var previousSpeakerState: Boolean = false
     private var recordThread: Thread? = null
     private var onConnected: (() -> Unit)? = null
 
-    private val sampleRate = 44100
-    private val bufferSize = AudioRecord.getMinBufferSize(sampleRate,
-        AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+    private val sampleRate = 16000
+    private val bufferSize = maxOf(
+        AudioRecord.getMinBufferSize(sampleRate,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT),
+        sampleRate / 5
+    )
 
     fun setOnConnected(callback: () -> Unit) {
         onConnected = callback
@@ -34,11 +41,22 @@ class AudioStreamClient(private val context: Context) {
             return false
         }
 
-        audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate,
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager?.let {
+            previousAudioMode = it.mode
+            previousSpeakerState = it.isSpeakerphoneOn
+            it.mode = AudioManager.MODE_IN_COMMUNICATION
+        }
+
+        audioRecord = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, sampleRate,
             AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize)
 
         audioTrack = if (android.os.Build.VERSION.SDK_INT >= 29) {
             AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build())
                 .setAudioFormat(AudioFormat.Builder()
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .setSampleRate(sampleRate)
@@ -97,8 +115,7 @@ class AudioStreamClient(private val context: Context) {
     }
 
     fun toggleSpeaker(useSpeaker: Boolean) {
-        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-        am.isSpeakerphoneOn = useSpeaker
+        audioManager?.isSpeakerphoneOn = useSpeaker
     }
 
     fun dispose() {
@@ -112,5 +129,10 @@ class AudioStreamClient(private val context: Context) {
         audioTrack?.release()
         audioRecord = null
         audioTrack = null
+        audioManager?.let {
+            it.isSpeakerphoneOn = previousSpeakerState
+            it.mode = previousAudioMode
+        }
+        audioManager = null
     }
 }

@@ -1,16 +1,17 @@
-// FamilyCall v6 - PCM16 pure audio
+// FamilyCall v7 - PCM16 pure audio + friend system + superadmin + notifications
 'use strict';
 const WS_PROTO = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const WS_URL   = `${WS_PROTO}//${location.host}`;
 const HTTP_URL = location.origin;
 
 let ws = null, currentCallId = null, timerInterval = null, seconds = 0;
-let myUsername = '', myName = '', chatTarget = '', refreshInterval = null;
+let myUsername = '', myName = '', myRole = 'user', chatTarget = '', refreshInterval = null;
 
 /* ── Audio ── */
 let micStream     = null;
 let audioStarted  = false;
 let isMuted       = false;
+let isOnHold      = false;
 
 /* Capture via AudioContext → PCM16 (no MediaRecorder, no codec issues) */
 let captureCtx    = null;
@@ -29,10 +30,26 @@ let txAudioChunks = 0;
 let rxAudioChunks = 0;
 let playedAudioChunks = 0;
 
+/* Speaker / output routing */
+let speakerActive = false;
+
 /* Ring */
 let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
 
 const $ = id => document.getElementById(id);
+
+/* ── Notifications ── */
+if (Notification && Notification.permission === 'default') {
+  Notification.requestPermission().catch(() => {});
+}
+
+function showCallNotification(callerName) {
+  if (document.visibilityState !== 'hidden') return;
+  if (!Notification || Notification.permission !== 'granted') return;
+  try {
+    new Notification('Incoming Call', { body: callerName + ' is calling you', icon: '/icon.png' });
+  } catch(e) {}
+}
 
 /* ── Logger ── */
 function slog(event, data) {
@@ -60,7 +77,13 @@ $('loginBtn').onclick = () => {
   slog('login_click',{username:u});
   fetch(`${HTTP_URL}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
     .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Login failed');}))
-    .then(r=>{slog('login_success',{username:r.user.username});localStorage.setItem('fc_user',r.user.username);localStorage.setItem('fc_name',r.user.name);connectApp(r.user.username,r.user.name);})
+    .then(r=>{
+      slog('login_success',{username:r.user.username});
+      localStorage.setItem('fc_user',r.user.username);
+      localStorage.setItem('fc_name',r.user.name);
+      localStorage.setItem('fc_role',r.user.role||'user');
+      connectApp(r.user.username,r.user.name,r.user.role||'user');
+    })
     .catch(e=>{slog('login_failed',{username:u,err:e.message});$('loginBtn').textContent='Sign In';$('loginBtn').disabled=false;alert(e.message);});
 };
 
@@ -73,12 +96,18 @@ $('regBtn').onclick = () => {
   slog('register_click',{username:u,name:n});
   fetch(`${HTTP_URL}/api/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,name:n,password:p})})
     .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Registration failed');}))
-    .then(()=>{slog('register_success',{username:u});localStorage.setItem('fc_user',u);localStorage.setItem('fc_name',n);connectApp(u,n);})
+    .then(r=>{
+      slog('register_success',{username:u});
+      localStorage.setItem('fc_user',u);
+      localStorage.setItem('fc_name',n);
+      localStorage.setItem('fc_role',r.user&&r.user.role?r.user.role:'user');
+      connectApp(u,n,'user');
+    })
     .catch(e=>{slog('register_failed',{username:u,err:e.message});$('regBtn').textContent='Create Account';$('regBtn').disabled=false;alert(e.message);});
 };
 
 $('logoutBtn').onclick = () => {
-  localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name');
+  localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); localStorage.removeItem('fc_role');
   if (ws) ws.close();
   $('mainPage').classList.add('hide'); $('loginPage').classList.remove('hide');
   $('loginUser').value=''; $('loginPass').value='';
@@ -87,21 +116,34 @@ $('logoutBtn').onclick = () => {
 /* ═══════════════════════════════════════════
    WEBSOCKET
 ═══════════════════════════════════════════ */
-function connectApp(username, name) {
-  myUsername=username; myName=name;
+function connectApp(username, name, role) {
+  myUsername=username; myName=name; myRole=role||'user';
   const AC = window.AudioContext || window.webkitAudioContext;
   slog('client_ready',{ua:navigator.userAgent, audioWorklet:!!(AC&&AC.prototype&&('audioWorklet' in AC.prototype))});
   $('myName').textContent=name; $('myUser').textContent=username;
+  // Show superadmin badge in topbar if applicable
+  if (myRole === 'superadmin') {
+    const brand = document.querySelector('.topbar-brand');
+    if (brand && !brand.querySelector('.sa-badge')) {
+      const badge = document.createElement('span');
+      badge.className='sa-badge';
+      badge.textContent=' ⬡ CREATOR';
+      badge.style.cssText='font-size:9px;color:#ffff00;letter-spacing:2px;margin-left:6px;text-shadow:0 0 8px #ffff00';
+      brand.appendChild(badge);
+    }
+  }
   $('loginPage').classList.add('hide'); $('registerPage').classList.add('hide'); $('mainPage').classList.remove('hide');
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
-  ws.onopen=()=>{slog('ws_open',{});loadContacts();refreshInterval=setInterval(loadContacts,5000);};
+  ws.onopen=()=>{slog('ws_open',{});loadContacts();refreshInterval=setInterval(loadContacts,8000);};
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
   ws.onclose=()=>{slog('ws_close',{});if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
 }
 
 function handleMsg(msg) {
   switch(msg.type) {
-    case 'welcome': break;
+    case 'welcome':
+      myRole = msg.role || myRole;
+      break;
     case 'pending_messages': loadChatContacts(); break;
 
     case 'incoming_call':
@@ -112,17 +154,21 @@ function handleMsg(msg) {
       $('incomingPage').classList.remove('hide');
       $('mainPage').classList.add('hide');
       startRing();
+      showCallNotification(msg.callerName);
       break;
 
     case 'call_created':
       currentCallId=msg.callId;
       $('callStatusText').textContent='Ringing…';
       $('callTimer').classList.add('hide');
-      // Caller starts capture — playCtx already created in startCall() user gesture
       audioStarted=false;
       txAudioChunks=0; rxAudioChunks=0; playedAudioChunks=0;
-      // Small delay to let WS settle
       setTimeout(()=>startCapture(), 100);
+      break;
+
+    case 'call_busy':
+      stopRing(); endCallUI();
+      alert('📵 User is busy in another call');
       break;
 
     case 'call_accepted':
@@ -148,11 +194,43 @@ function handleMsg(msg) {
       appendChatMsg(msg.from,msg.text,false,msg.voiceData,msg.voiceMime); loadChatContacts();
       break;
 
+    case 'friend_request':
+      loadContacts(); // refresh to show pending
+      showFriendRequestToast(msg.fromName || msg.from);
+      break;
+
+    case 'friend_request_sent':
+      loadContacts();
+      break;
+
+    case 'friend_accepted':
+      loadContacts();
+      showToast('✅ ' + (msg.withName || msg.with) + ' is now your friend!');
+      break;
+
     case 'error': alert(msg.message); break;
   }
 }
 
 function send(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
+
+function showToast(msg) {
+  let t = document.getElementById('toastMsg');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toastMsg';
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #00f5ff;color:#00f5ff;padding:10px 18px;font-size:12px;letter-spacing:1px;z-index:9999;border-radius:2px;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._to);
+  t._to = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+function showFriendRequestToast(fromName) {
+  showToast('👤 Friend request from ' + fromName);
+}
 
 /* ═══════════════════════════════════════════
    RING
@@ -181,23 +259,14 @@ function stopRing(){
 
 /* ═══════════════════════════════════════════
    CAPTURE — AudioContext ScriptProcessor → PCM16 → base64
-   
-   Why this works on ALL devices:
-   - No MediaRecorder, no codec, no MIME type
-   - Raw PCM16 samples — universally decodable
-   - ScriptProcessor connected to silent gain node so mobile doesn't kill it
 ═══════════════════════════════════════════ */
 const SAMPLE_RATE = 16000;
-const PROC_BUFFER = 4096; // ~256ms per chunk at 16kHz
+const PROC_BUFFER = 4096;
 
 async function startCapture(){
-  if(audioStarted){
-    slog('capture_already_started',{callId:currentCallId});
-    return;
-  }
+  if(audioStarted){ slog('capture_already_started',{callId:currentCallId}); return; }
   audioStarted=true;
   slog('capture_attempting',{callId:currentCallId,audioStarted});
-
   try{
     micStream=await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}
@@ -209,26 +278,19 @@ async function startCapture(){
     slog('mic_denied',{err:e.message});
     return;
   }
-
   captureCtx=new(window.AudioContext||window.webkitAudioContext)();
   if(captureCtx.state==='suspended')await captureCtx.resume();
   const nativeRate=captureCtx.sampleRate;
   slog('capture_start',{nativeRate,ua:navigator.userAgent.substring(0,60)});
-
   captureSource=captureCtx.createMediaStreamSource(micStream);
   captureGain=captureCtx.createGain();
   captureGain.gain.value=0;
-
   if(captureCtx.audioWorklet){
     try{
       await captureCtx.audioWorklet.addModule('/js/pcm-recorder.js?v=1');
-      captureNode=new AudioWorkletNode(captureCtx,'pcm-recorder',{
-        numberOfInputs:1,
-        numberOfOutputs:1,
-        outputChannelCount:[1]
-      });
+      captureNode=new AudioWorkletNode(captureCtx,'pcm-recorder',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
       captureNode.port.onmessage=e=>{
-        if(!currentCallId||isMuted||!e.data||e.data.type!=='pcm')return;
+        if(!currentCallId||isMuted||isOnHold||!e.data||e.data.type!=='pcm')return;
         const bytes=new Uint8Array(e.data.buffer);
         let bin='';
         for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
@@ -241,17 +303,12 @@ async function startCapture(){
       captureGain.connect(captureCtx.destination);
       slog('capture_mode',{mode:'audioWorklet'});
       return;
-    }catch(e){
-      slog('worklet_failed',{err:e.message});
-    }
+    }catch(e){ slog('worklet_failed',{err:e.message}); }
   }
-
   captureProc=captureCtx.createScriptProcessor(PROC_BUFFER,1,1);
-
   captureProc.onaudioprocess=e=>{
-    if(isMuted||!currentCallId)return;
-    const input=e.inputBuffer.getChannelData(0); // Float32 at nativeRate
-    // Downsample to 16kHz
+    if(isMuted||isOnHold||!currentCallId)return;
+    const input=e.inputBuffer.getChannelData(0);
     const ratio=nativeRate/SAMPLE_RATE;
     const outLen=Math.floor(input.length/ratio);
     const pcm=new Int16Array(outLen);
@@ -259,7 +316,6 @@ async function startCapture(){
       const s=Math.max(-1,Math.min(1,input[Math.floor(i*ratio)]));
       pcm[i]=s<0?s*0x8000:s*0x7FFF;
     }
-    // base64 encode
     const bytes=new Uint8Array(pcm.buffer);
     let bin='';
     for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
@@ -267,7 +323,6 @@ async function startCapture(){
     if(txAudioChunks<=5||txAudioChunks%25===0)slog('tx_audio_chunk',{mode:'scriptProcessor',chunk:txAudioChunks,bytes:bytes.length,ctxState:captureCtx.state});
     send({type:'audio',callId:currentCallId,data:btoa(bin),sampleRate:SAMPLE_RATE});
   };
-
   captureSource.connect(captureProc);
   captureProc.connect(captureGain);
   captureGain.connect(captureCtx.destination);
@@ -288,11 +343,6 @@ function stopCapture(){
 
 /* ═══════════════════════════════════════════
    PLAYBACK — PCM16 base64 → AudioContext scheduled play
-   
-   Why this works on ALL devices:
-   - No decodeAudioData, no codec, no MIME
-   - Raw PCM16 → Float32 → AudioBuffer → play
-   - Scheduled so no gaps or overlaps
 ═══════════════════════════════════════════ */
 function resampleFloat32(input, fromRate, toRate) {
   fromRate = Number(fromRate) || SAMPLE_RATE;
@@ -321,15 +371,16 @@ function unlockAudioOutput() {
 async function ensurePlayCtx(){
   if(!playCtx||playCtx.state==='closed'){
     playCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
-    playNextTime=0;
-    playNode=null;
+    playNextTime=0; playNode=null;
     playGain=playCtx.createGain();
     playGain.gain.value=2.0;
     playGain.connect(playCtx.destination);
     slog('playctx_created',{state:playCtx.state,sampleRate:playCtx.sampleRate});
   }
   if(playCtx.state==='suspended'){
-    await playCtx.resume().then(()=>slog('playctx_resumed',{state:playCtx.state})).catch(e=>slog('playctx_resume_failed',{err:e.message,state:playCtx.state}));
+    await playCtx.resume()
+      .then(()=>slog('playctx_resumed',{state:playCtx.state}))
+      .catch(e=>slog('playctx_resume_failed',{err:e.message,state:playCtx.state}));
   }
   if(!playNode && playCtx.audioWorklet){
     try{
@@ -338,10 +389,7 @@ async function ensurePlayCtx(){
       playNode.connect(playGain);
       playMode='worklet';
       slog('playback_mode',{mode:playMode,state:playCtx.state,sampleRate:playCtx.sampleRate});
-    }catch(e){
-      playMode='buffer';
-      slog('playworklet_failed',{err:e.message});
-    }
+    }catch(e){ playMode='buffer'; slog('playworklet_failed',{err:e.message}); }
   }
   unlockAudioOutput();
 }
@@ -351,8 +399,6 @@ async function receiveAudio(b64, sourceRate){
   if(rxAudioChunks<=5||rxAudioChunks%25===0)slog('rx_audio_chunk',{chunk:rxAudioChunks,b64Length:b64.length,sourceRate,playState:playCtx?playCtx.state:'none',visibility:document.visibilityState});
   await ensurePlayCtx();
   if(!playCtx||playCtx.state==='closed'){slog('rx_drop_no_playctx',{chunk:rxAudioChunks});return;}
-
-  // base64 → Int16Array
   let pcm;
   try{
     const bin=atob(b64);
@@ -361,44 +407,30 @@ async function receiveAudio(b64, sourceRate){
     for(let i=0;i<bin.length;i++)view[i]=bin.charCodeAt(i);
     pcm=new Int16Array(buf);
   }catch(e){slog('rx_b64_fail',{err:e.message});return;}
-
-  // Int16 → Float32
   const f32=new Float32Array(pcm.length);
   for(let i=0;i<pcm.length;i++)f32[i]=pcm[i]/(pcm[i]<0?0x8000:0x7FFF);
-
   if(playNode){
     try{
       const out = resampleFloat32(f32, sourceRate, playCtx.sampleRate);
-      const sampleCount = out.length;
-      // Must transfer the buffer, not copy — otherwise samples arrive empty
       playNode.port.postMessage({type:'chunk', samples: out}, [out.buffer]);
       playedAudioChunks++;
-      if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_queued',{chunk:playedAudioChunks,samples:sampleCount,sourceRate,ctxRate:playCtx.sampleRate,state:playCtx.state,mode:playMode});
+      if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_queued',{chunk:playedAudioChunks,samples:out.length,sourceRate,ctxRate:playCtx.sampleRate,state:playCtx.state,mode:playMode});
       return;
-    }catch(e){
-      slog('play_worklet_queue_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state});
-    }
+    }catch(e){ slog('play_worklet_queue_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state}); }
   }
-
-  // Fallback: Create AudioBuffer and schedule
   try{
     const ab=playCtx.createBuffer(1,f32.length,Number(sourceRate)||SAMPLE_RATE);
     ab.copyToChannel(f32,0);
-
     const src=playCtx.createBufferSource();
     src.buffer=ab;
     src.connect(playGain || playCtx.destination);
-
     const now=playCtx.currentTime;
     if(playNextTime<now+0.01)playNextTime=now+0.05;
-    const scheduledAt=playNextTime;
-    src.start(scheduledAt);
+    src.start(playNextTime);
     playNextTime+=ab.duration;
     playedAudioChunks++;
-    if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_scheduled',{chunk:playedAudioChunks,duration:ab.duration,scheduledAt,now,state:playCtx.state,outputLatency:playCtx.outputLatency||null});
-  }catch(e){
-    slog('play_audio_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state});
-  }
+    if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_scheduled',{chunk:playedAudioChunks,duration:ab.duration,state:playCtx.state});
+  }catch(e){ slog('play_audio_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state}); }
 }
 
 function cleanupPlayback(){
@@ -412,9 +444,12 @@ function cleanupPlayback(){
 /* ═══════════════════════════════════════════
    CALL UI
 ═══════════════════════════════════════════ */
-async function startCall(username,name){
+let callChatTarget = '';
+
+async function startCall(username, name){
   txAudioChunks=0;rxAudioChunks=0;playedAudioChunks=0;
-  await ensurePlayCtx(); // create/unlock from user gesture
+  callChatTarget = username;
+  await ensurePlayCtx();
   $('callDisplayName').textContent=name;
   $('callAvatarLetter').textContent=name.charAt(0).toUpperCase();
   $('callStatusText').textContent='Calling…';
@@ -422,6 +457,7 @@ async function startCall(username,name){
   $('callingPage').classList.remove('hide');
   $('mainPage').classList.add('hide');
   audioStarted=false;
+  isOnHold=false;
   send({type:'call',calleeUsername:username});
   startCallTimer();
 }
@@ -434,7 +470,9 @@ $('callEndBtn').onclick=()=>{
 $('acceptBtn').onclick=async()=>{
   if(!currentCallId||!ws)return;
   stopRing();
-  await ensurePlayCtx(); // create/unlock from user gesture
+  callChatTarget = '';
+  // Try to get caller username from the stored call info (set in handleMsg)
+  await ensurePlayCtx();
   send({type:'accept_call',callId:currentCallId});
   $('callDisplayName').textContent=$('incomingName').textContent;
   $('callAvatarLetter').textContent=$('incomingName').textContent.charAt(0).toUpperCase();
@@ -443,9 +481,9 @@ $('acceptBtn').onclick=async()=>{
   $('incomingPage').classList.add('hide');
   $('callingPage').classList.remove('hide');
   startCallTimer();
-  // Callee starts capture — force reset flag
   audioStarted=false;
   txAudioChunks=0; rxAudioChunks=0; playedAudioChunks=0;
+  isOnHold=false;
   slog('callee_accept_capture_start',{callId:currentCallId});
   startCapture();
 };
@@ -465,16 +503,82 @@ $('muteBtn').onclick=function(){
   this.classList.toggle('active',isMuted);
 };
 
-$('speakerBtn').onclick=function(){this.classList.toggle('active');};
+// Hold button
+$('holdBtn').onclick=function(){
+  isOnHold=!isOnHold;
+  this.querySelector('.ctrl-btn-circle').textContent=isOnHold?'▶':'⏸';
+  this.querySelector('span').textContent=isOnHold?'Resume':'Hold';
+  this.classList.toggle('active',isOnHold);
+  $('callStatusText').textContent=isOnHold?'On Hold':'Connected';
+};
+
+// Speaker button — route audio to speaker via setSinkId if available
+$('speakerBtn').onclick=function(){
+  speakerActive=!speakerActive;
+  this.querySelector('.ctrl-btn-circle').textContent=speakerActive?'📢':'🔊';
+  this.querySelector('span').textContent=speakerActive?'Speaker On':'Speaker';
+  this.classList.toggle('active',speakerActive);
+  if(playCtx && playCtx.destination && playCtx.destination.stream){
+    // For browsers supporting audio output selection
+    const audioEls = document.querySelectorAll('audio');
+    audioEls.forEach(a => {
+      if(typeof a.setSinkId === 'function'){
+        a.setSinkId(speakerActive ? 'speaker' : 'default').catch(()=>{});
+      }
+    });
+  }
+  slog('speaker_toggle', { active: speakerActive });
+};
+
+// Message button on call screen — opens mini chat overlay
+$('callMsgBtn').onclick=function(){
+  const overlay = $('callChatOverlay');
+  if(overlay){
+    overlay.classList.toggle('hide');
+    if(!overlay.classList.contains('hide') && callChatTarget){
+      $('callChatTarget').textContent = $('callDisplayName').textContent;
+      $('callChatMessages').innerHTML = '';
+    }
+  }
+};
+
+$('callChatClose').onclick=function(){
+  $('callChatOverlay').classList.add('hide');
+};
+
+$('callChatSendBtn').onclick=function(){
+  const inp = $('callChatInput');
+  const t = inp.value.trim();
+  if(!t) return;
+  const target = callChatTarget || chatTarget;
+  if(!target){ alert('No chat target'); return; }
+  send({type:'chat', to:target, text:t});
+  const div = document.createElement('div');
+  div.className='chat-msg chat-mine';
+  div.textContent=t;
+  $('callChatMessages').appendChild(div);
+  $('callChatMessages').scrollTop=$('callChatMessages').scrollHeight;
+  inp.value='';
+};
+
+$('callChatInput').onkeydown=e=>{ if(e.key==='Enter')$('callChatSendBtn').click(); };
 
 function endCallUI(){
   stopCapture();
   cleanupPlayback();
   currentCallId=null;
+  callChatTarget='';
+  isOnHold=false;
   if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
   isMuted=false;
   const mb=$('muteBtn');
   if(mb){mb.querySelector('.ctrl-btn-circle').textContent='🎙️';mb.querySelector('span').textContent='Mute';mb.classList.remove('active');}
+  const hb=$('holdBtn');
+  if(hb){hb.querySelector('.ctrl-btn-circle').textContent='⏸';hb.querySelector('span').textContent='Hold';hb.classList.remove('active');}
+  const sb=$('speakerBtn');
+  if(sb){sb.querySelector('.ctrl-btn-circle').textContent='🔊';sb.querySelector('span').textContent='Speaker';sb.classList.remove('active');}
+  const overlay=$('callChatOverlay');
+  if(overlay) overlay.classList.add('hide');
   $('callingPage').classList.add('hide');
   $('incomingPage').classList.add('hide');
   $('mainPage').classList.remove('hide');
@@ -493,52 +597,178 @@ function startCallTimer(){
 }
 
 /* ═══════════════════════════════════════════
-   CONTACTS
+   CONTACTS — Friends system
 ═══════════════════════════════════════════ */
 async function loadContacts(){
-  const users=await fetch(`${HTTP_URL}/api/users`).then(r=>r.json());
-  const others=users.filter(u=>u.username!==myUsername);
-  const list=$('contactsList');
-  if(!others.length){list.innerHTML='';$('noContacts').classList.remove('hide');return;}
-  $('noContacts').classList.add('hide');
-  list.innerHTML=others.map(u=>`
-    <div class="contact-item">
-      <div class="contact-avatar">${u.name.charAt(0).toUpperCase()}<span class="status-dot ${u.online?'dot-on':'dot-off'}"></span></div>
-      <div class="contact-info">
-        <div class="contact-name">${u.name}</div>
-        <div class="contact-user">@${u.username} · ${u.online?'Online':'Offline'}</div>
-      </div>
-      <div class="contact-actions">
-        <button class="action-btn chat-btn-sm" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">💬</button>
-        <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">📞</button>
-      </div>
-    </div>`).join('');
+  if (!myUsername) return;
+  try {
+    const data = await fetch(`${HTTP_URL}/api/friends/${myUsername}`).then(r=>r.json());
+    const friends = data.friends || [];
+    const pendingIn = data.pendingIn || [];
+    const pendingOut = data.pendingOut || [];
+
+    const list=$('contactsList');
+    let html = '';
+
+    // Pending incoming requests section
+    if (pendingIn.length > 0) {
+      html += '<div class="section-header">⚡ PENDING REQUESTS</div>';
+      for (const fromKey of pendingIn) {
+        html += `<div class="contact-item">
+          <div class="contact-avatar" style="background:linear-gradient(135deg,rgba(255,0,128,0.2),rgba(0,245,255,0.2))">${fromKey.charAt(0).toUpperCase()}</div>
+          <div class="contact-info">
+            <div class="contact-name">${fromKey}</div>
+            <div class="contact-user">Wants to connect</div>
+          </div>
+          <div class="contact-actions">
+            <button class="action-btn call-btn" onclick="acceptFriend('${fromKey}')">✓</button>
+          </div>
+        </div>`;
+      }
+    }
+
+    // Pending outgoing
+    if (pendingOut.length > 0) {
+      html += '<div class="section-header">⏳ SENT REQUESTS</div>';
+      for (const toKey of pendingOut) {
+        html += `<div class="contact-item">
+          <div class="contact-avatar" style="opacity:.5">${toKey.charAt(0).toUpperCase()}</div>
+          <div class="contact-info">
+            <div class="contact-name">${toKey}</div>
+            <div class="contact-user">Request pending…</div>
+          </div>
+        </div>`;
+      }
+    }
+
+    // Friends list
+    if (friends.length > 0) {
+      html += '<div class="section-header">◈ CONNECTED NODES</div>';
+      html += friends.map(u=>{
+        const badge = (u.role==='superadmin') ? '<span style="color:#ffff00;font-size:9px;letter-spacing:1px"> ⬡ CREATOR</span>' : '';
+        const avatarHtml = u.avatar
+          ? `<div class="contact-avatar" style="padding:0;overflow:hidden"><img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:0"></div>`
+          : `<div class="contact-avatar">${u.name.charAt(0).toUpperCase()}<span class="status-dot ${u.online?'dot-on':'dot-off'}"></span></div>`;
+        return `<div class="contact-item">
+          ${avatarHtml}
+          <div class="contact-info">
+            <div class="contact-name">${u.name}${badge}</div>
+            <div class="contact-user">@${u.username} · ${u.online?'Online':'Offline'}</div>
+          </div>
+          <div class="contact-actions">
+            <button class="action-btn chat-btn-sm" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">💬</button>
+            <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">📞</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    if (!html) {
+      list.innerHTML='';
+      $('noContacts').classList.remove('hide');
+    } else {
+      $('noContacts').classList.add('hide');
+      list.innerHTML=html;
+    }
+  } catch(e) {
+    console.error('loadContacts error', e);
+  }
   loadChatContacts();
 }
 
-$('callUserBtn').onclick=()=>{const u=$('searchUser').value.trim().toLowerCase();if(u)startCall(u,u);};
-$('searchUser').onkeydown=e=>{if(e.key==='Enter')$('callUserBtn').click();};
+async function searchUsers(q) {
+  if (!q || q.length < 1) { loadContacts(); return; }
+  try {
+    const results = await fetch(`${HTTP_URL}/api/search/${encodeURIComponent(q)}`).then(r=>r.json());
+    const list=$('contactsList');
+    $('noContacts').classList.add('hide');
+    if(!results.length){ list.innerHTML='<div class="empty-state"><div class="empty-icon">◈</div><p>No users found</p></div>'; return; }
+    list.innerHTML='<div class="section-header">🔍 SEARCH RESULTS</div>'+results.map(u=>{
+      const badge = (u.role==='superadmin') ? '<span style="color:#ffff00;font-size:9px"> ⬡ CREATOR</span>' : '';
+      const avatarHtml = u.avatar
+        ? `<div class="contact-avatar" style="padding:0;overflow:hidden"><img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:0"></div>`
+        : `<div class="contact-avatar">${u.name.charAt(0).toUpperCase()}</div>`;
+      return `<div class="contact-item">
+        ${avatarHtml}
+        <div class="contact-info">
+          <div class="contact-name">${u.name}${badge}</div>
+          <div class="contact-user">@${u.username}</div>
+        </div>
+        <div class="contact-actions">
+          <button class="action-btn chat-btn-sm" onclick="sendFriendRequest('${u.username}')">+Add</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+function sendFriendRequest(toUsername) {
+  fetch(`${HTTP_URL}/api/friend-request`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ from: myUsername, to: toUsername })
+  }).then(r=>r.json()).then(r=>{
+    if(r.success) showToast('Friend request sent to @'+toUsername);
+    else alert(r.error || 'Could not send request');
+    loadContacts();
+  }).catch(()=>alert('Error sending request'));
+}
+
+function acceptFriend(fromUsername) {
+  fetch(`${HTTP_URL}/api/friend-accept`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ from: fromUsername, to: myUsername })
+  }).then(r=>r.json()).then(r=>{
+    if(r.success) showToast('You are now friends with @'+fromUsername);
+    else alert(r.error || 'Could not accept');
+    loadContacts();
+  }).catch(()=>alert('Error accepting request'));
+}
+
+// Search bar wiring
+$('searchUser').oninput = function() {
+  const q = this.value.trim();
+  if (q.length >= 1) searchUsers(q);
+  else loadContacts();
+};
+$('callUserBtn').onclick=()=>{
+  const u=$('searchUser').value.trim().toLowerCase();
+  if(u) searchUsers(u);
+};
+$('searchUser').onkeydown=e=>{ if(e.key==='Enter') $('callUserBtn').click(); };
 
 /* ═══════════════════════════════════════════
    TABS
 ═══════════════════════════════════════════ */
-$('tabContacts').onclick=function(){$('tabContacts').classList.add('active');$('tabChat').classList.remove('active');$('contactsView').classList.remove('hide');$('chatView').classList.add('hide');loadContacts();};
-$('tabChat').onclick=function(){$('tabChat').classList.add('active');$('tabContacts').classList.remove('active');$('contactsView').classList.add('hide');$('chatView').classList.remove('hide');loadChatContacts();};
+$('tabContacts').onclick=function(){
+  $('tabContacts').classList.add('active');$('tabChat').classList.remove('active');
+  $('contactsView').classList.remove('hide');$('chatView').classList.add('hide');
+  loadContacts();
+};
+$('tabChat').onclick=function(){
+  $('tabChat').classList.add('active');$('tabContacts').classList.remove('active');
+  $('contactsView').classList.add('hide');$('chatView').classList.remove('hide');
+  loadChatContacts();
+};
 
 /* ═══════════════════════════════════════════
    CHAT
 ═══════════════════════════════════════════ */
 function loadChatContacts(){
-  fetch(`${HTTP_URL}/api/users`).then(r=>r.json()).then(users=>{
-    const others=users.filter(u=>u.username!==myUsername);
-    fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(data=>{
-      $('chatContactsList').innerHTML=others.map(u=>`
-        <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
-          <div class="contact-avatar" style="background:#5c6bc0">${u.name.charAt(0).toUpperCase()}</div>
-          <div class="contact-info"><div class="contact-name">${u.name}</div>
-          <div class="contact-user">${data[u.username]?data[u.username].length+' messages':'Start a conversation'}</div></div>
-          <div style="color:#5f6368;font-size:20px">›</div>
-        </div>`).join('');
+  if (!myUsername) return;
+  fetch(`${HTTP_URL}/api/friends/${myUsername}`).then(r=>r.json()).then(data=>{
+    const friends = data.friends || [];
+    fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(msgs=>{
+      $('chatContactsList').innerHTML = friends.length === 0
+        ? '<div class="empty-state"><div class="empty-icon">◈</div><p>No friends yet — add some!</p></div>'
+        : friends.map(u=>`
+          <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
+            <div class="contact-avatar" style="background:#5c6bc0">${u.name.charAt(0).toUpperCase()}</div>
+            <div class="contact-info">
+              <div class="contact-name">${u.name}</div>
+              <div class="contact-user">${msgs[u.username]?msgs[u.username].length+' messages':'Start a conversation'}</div>
+            </div>
+            <div style="color:#5f6368;font-size:20px">›</div>
+          </div>`).join('');
     });
   });
 }
@@ -547,19 +777,28 @@ function openChat(username,name){
   chatTarget=username;$('chatWith').textContent=name||('@'+username);
   $('chatListView').classList.add('hide');$('chatAreaView').classList.remove('hide');
   fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(data=>{
-    $('chatMessages').innerHTML=(data[username]||[]).map(m=>`<div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">${m.text}</div>`).join('');
+    $('chatMessages').innerHTML=(data[username]||[]).map(m=>`<div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">${escHtml(m.text)}</div>`).join('');
     $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
   });
   $('chatInput').focus();
 }
 
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 function closeChatArea(){$('chatAreaView').classList.add('hide');$('chatListView').classList.remove('hide');chatTarget='';}
 
-$('chatSendBtn').onclick=()=>{const t=$('chatInput').value.trim();if(!t||!chatTarget)return;send({type:'chat',to:chatTarget,text:t});appendChatMsg(myUsername,t,true);$('chatInput').value='';};
+$('chatSendBtn').onclick=()=>{
+  const t=$('chatInput').value.trim();
+  if(!t||!chatTarget)return;
+  send({type:'chat',to:chatTarget,text:t});
+  appendChatMsg(myUsername,t,true);
+  $('chatInput').value='';
+};
 $('chatInput').onkeydown=e=>{if(e.key==='Enter')$('chatSendBtn').click();};
 
-function appendChatMsg(from,text,mine){
+function appendChatMsg(from,text,mine,voiceData,voiceMime){
   if(!mine&&chatTarget!==from)return;
+  if(voiceData){appendVoiceMsg(from,voiceData,voiceMime,mine);return;}
   const div=document.createElement('div');
   div.className='chat-msg '+(mine?'chat-mine':'chat-other');
   div.textContent=text;
@@ -575,7 +814,6 @@ let vnRecorder=null, vnStream=null, vnChunks=[], vnRecording=false;
 $('voiceNoteBtn').onclick=async function(){
   if(!chatTarget)return;
   if(!vnRecording){
-    // Start recording
     try{
       vnStream=await navigator.mediaDevices.getUserMedia({audio:true});
       vnChunks=[];
@@ -602,7 +840,6 @@ $('voiceNoteBtn').onclick=async function(){
       this.classList.add('recording');
     }catch(e){alert('Mic denied: '+e.message);}
   } else {
-    // Stop recording
     vnRecording=false;
     this.textContent='🎤';
     this.classList.remove('recording');
@@ -625,26 +862,98 @@ function appendVoiceMsg(from,b64,mime,mine){
   $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
 }
 
-function appendChatMsg(from,text,mine,voiceData,voiceMime){
-  if(!mine&&chatTarget!==from)return;
-  if(voiceData){appendVoiceMsg(from,voiceData,voiceMime,mine);return;}
-  const div=document.createElement('div');
-  div.className='chat-msg '+(mine?'chat-mine':'chat-other');
-  div.textContent=text;
-  $('chatMessages').appendChild(div);
-  $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+/* ═══════════════════════════════════════════
+   PROFILE / SETTINGS
+═══════════════════════════════════════════ */
+function openProfileModal(){
+  const modal = $('profileModal');
+  if(modal) modal.classList.remove('hide');
+  // Load current profile
+  fetch(`${HTTP_URL}/api/profile/${myUsername}`).then(r=>r.json()).then(u=>{
+    const ni = $('profileNameInput');
+    if(ni) ni.value = u.name || myName;
+    const preview = $('profileAvatarPreview');
+    if(preview && u.avatar) { preview.src=u.avatar; preview.style.display='block'; }
+  }).catch(()=>{});
 }
+
+function closeProfileModal(){
+  const modal = $('profileModal');
+  if(modal) modal.classList.add('hide');
+}
+
+function saveProfile(){
+  const name = $('profileNameInput') ? $('profileNameInput').value.trim() : '';
+  const avatar = $('profileAvatarPreview') ? $('profileAvatarPreview').getAttribute('data-b64') || null : null;
+  fetch(`${HTTP_URL}/api/profile`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ username: myUsername, name: name||undefined, avatar: avatar||undefined })
+  }).then(r=>r.json()).then(r=>{
+    if(r.success){
+      if(name){ myName=r.user.name; localStorage.setItem('fc_name',r.user.name); $('myName').textContent=r.user.name; }
+      showToast('Profile updated');
+      closeProfileModal();
+      loadContacts();
+    } else { alert(r.error||'Update failed'); }
+  }).catch(()=>alert('Error updating profile'));
+}
+
+function handleAvatarUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(file.size > 60000) { alert('Image too large. Please use an image under 50KB.'); return; }
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    const b64 = reader.result; // data:image/...;base64,...
+    const preview = $('profileAvatarPreview');
+    if(preview){ preview.src=b64; preview.style.display='block'; preview.setAttribute('data-b64', b64); }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Profile button in topbar
+const profileBtn = document.getElementById('profileBtn');
+if(profileBtn) profileBtn.onclick = openProfileModal;
+
+/* ═══════════════════════════════════════════
+   SECTION HEADER STYLE (injected)
+═══════════════════════════════════════════ */
+(function injectStyles(){
+  const style = document.createElement('style');
+  style.textContent = `
+.section-header{padding:6px 16px;font-size:9px;letter-spacing:3px;color:var(--neon-cyan);opacity:.6;text-transform:uppercase;font-family:'Orbitron',monospace;background:var(--bg2);border-bottom:1px solid rgba(0,245,255,0.07)}
+.sa-badge{font-size:9px;color:#ffff00;letter-spacing:2px;margin-left:6px;text-shadow:0 0 8px #ffff00}
+#toastMsg{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #00f5ff;color:#00f5ff;padding:10px 18px;font-size:12px;letter-spacing:1px;z-index:9999;border-radius:2px;pointer-events:none;transition:opacity .3s;opacity:0}
+/* Call screen extra buttons */
+.call-btns-row-2{display:flex;gap:20px;justify-content:center;align-items:center;margin-top:4px}
+/* Call chat overlay */
+#callChatOverlay{position:absolute;bottom:160px;left:12px;right:12px;background:#0d0d1a;border:1px solid rgba(0,245,255,0.3);z-index:200;max-height:260px;display:flex;flex-direction:column}
+#callChatOverlay.hide{display:none!important}
+#callChatOverlay .cco-header{padding:8px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(0,245,255,0.2);font-size:11px;color:var(--neon-cyan);font-family:'Orbitron',monospace;letter-spacing:2px}
+#callChatMessages{flex:1;overflow-y:auto;padding:8px 12px;display:flex;flex-direction:column;gap:4px;min-height:80px}
+#callChatInput{flex:1;background:rgba(0,245,255,0.05);border:1px solid rgba(0,245,255,0.2);padding:8px 10px;font-size:12px;color:var(--text);font-family:'Share Tech Mono',monospace;outline:none}
+#callChatSendBtn{background:transparent;border:1px solid var(--neon-cyan);color:var(--neon-cyan);width:36px;height:36px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cco-input-row{display:flex;gap:6px;padding:6px 8px;border-top:1px solid rgba(0,245,255,0.15)}
+/* Profile modal */
+#profileModal{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:flex;align-items:center;justify-content:center}
+#profileModal.hide{display:none!important}
+#profileModalInner{background:#0d0d1a;border:1px solid rgba(0,245,255,0.3);padding:24px;width:90%;max-width:340px}
+#profileModalInner h3{font-family:'Orbitron',monospace;font-size:12px;color:var(--neon-cyan);letter-spacing:3px;margin-bottom:16px}
+#profileAvatarPreview{width:64px;height:64px;object-fit:cover;border:1px solid rgba(0,245,255,0.3);display:none;margin-bottom:10px}
+  `;
+  document.head.appendChild(style);
+})();
 
 /* ═══════════════════════════════════════════
    INIT
 ═══════════════════════════════════════════ */
 (async()=>{
-  const u=localStorage.getItem('fc_user'),n=localStorage.getItem('fc_name');
+  const u=localStorage.getItem('fc_user'),n=localStorage.getItem('fc_name'),r=localStorage.getItem('fc_role')||'user';
   if(u&&n){
     try{
-      const r=await fetch(`${HTTP_URL}/api/user/${u}`);
-      if(r.ok)connectApp(u,n);
-      else{localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
-    }catch(e){localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');}
+      const res=await fetch(`${HTTP_URL}/api/user/${u}`);
+      if(res.ok) connectApp(u,n,r);
+      else{ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
+    }catch(e){ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
   }
 })();

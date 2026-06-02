@@ -214,6 +214,7 @@ class ServerClient private constructor() {
             put("type", "audio")
             put("callId", callId)
             put("data", data)
+            put("sampleRate", 16000)
         }.toString())
     }
 

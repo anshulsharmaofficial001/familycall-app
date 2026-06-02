@@ -190,7 +190,10 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       <div class="topbar-brand">⬡ FAMILYCALL</div>
       <div class="topbar-user">NODE: <span id="myName"></span> // <span id="myUser"></span></div>
     </div>
-    <button class="icon-btn" id="logoutBtn" title="Disconnect">⏻</button>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="icon-btn" id="profileBtn" title="Profile">👤</button>
+      <button class="icon-btn" id="logoutBtn" title="Disconnect">⏻</button>
+    </div>
   </div>
   <div class="tabs">
     <button class="tab-btn active" id="tabContacts">CONTACTS</button>
@@ -198,8 +201,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
   <div id="contactsView">
     <div class="search-bar">
-      <input class="search-input" id="searchUser" placeholder="SCAN USER ID...">
-      <button class="search-btn" id="callUserBtn">CALL</button>
+      <input class="search-input" id="searchUser" placeholder="SEARCH USERS...">
+      <button class="search-btn" id="callUserBtn">🔍</button>
     </div>
     <div class="contacts-list" id="contactsList"></div>
     <div class="empty-state hide" id="noContacts">
@@ -225,7 +228,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 </div>
 
 <!-- CALL SCREEN -->
-<div id="callingPage" class="call-screen hide">
+<div id="callingPage" class="call-screen hide" style="position:relative">
   <div class="call-avatar-wrap">
     <div class="call-avatar-rings">
       <div class="call-avatar" id="callAvatarLetter">?</div>
@@ -234,15 +237,37 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <div class="call-status" id="callStatusText">INITIALIZING...</div>
     <div class="call-timer hide" id="callTimer">00:00</div>
   </div>
+  <!-- Call chat overlay -->
+  <div id="callChatOverlay" class="hide">
+    <div class="cco-header">
+      <span>💬 MSG: <span id="callChatTarget"></span></span>
+      <button id="callChatClose" style="background:none;border:none;color:#ff0080;font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div id="callChatMessages"></div>
+    <div class="cco-input-row">
+      <input id="callChatInput" placeholder="Type message..." maxlength="300">
+      <button id="callChatSendBtn">▶</button>
+    </div>
+  </div>
   <div class="call-controls">
     <div class="call-btns-row">
       <button class="ctrl-btn ctrl-mute" id="muteBtn">
         <div class="ctrl-btn-circle">🎙️</div>
         <span>MUTE</span>
       </button>
+      <button class="ctrl-btn" id="holdBtn">
+        <div class="ctrl-btn-circle">⏸</div>
+        <span>HOLD</span>
+      </button>
       <button class="ctrl-btn ctrl-speaker" id="speakerBtn">
         <div class="ctrl-btn-circle">🔊</div>
         <span>SPEAKER</span>
+      </button>
+    </div>
+    <div class="call-btns-row-2">
+      <button class="ctrl-btn" id="callMsgBtn">
+        <div class="ctrl-btn-circle">💬</div>
+        <span>MESSAGE</span>
       </button>
     </div>
     <button class="end-call-btn" id="callEndBtn">📵</button>
@@ -271,5 +296,27 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
 </div>
 
-<script src="/js/app.js?v=cp1"></script>
+<!-- PROFILE MODAL -->
+<div id="profileModal" class="hide">
+  <div id="profileModalInner">
+    <h3>// EDIT PROFILE</h3>
+    <div style="margin-bottom:12px">
+      <img id="profileAvatarPreview" alt="avatar">
+      <div>
+        <label style="font-size:10px;color:var(--neon-cyan);letter-spacing:2px;display:block;margin-bottom:4px">AVATAR (max 50KB)</label>
+        <input type="file" accept="image/*" onchange="handleAvatarUpload(this)" style="font-size:11px;color:var(--text2);width:100%">
+      </div>
+    </div>
+    <div class="field">
+      <label>Display Name</label>
+      <input id="profileNameInput" class="search-input" placeholder="Your name" maxlength="50">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="cyber-btn" onclick="saveProfile()" style="flex:1"><span>SAVE</span></button>
+      <button class="cyber-btn" onclick="closeProfileModal()" style="flex:1;border-color:rgba(255,0,128,.5);color:#ff0080"><span>CANCEL</span></button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js?v=cp2"></script>
 </body></html>
