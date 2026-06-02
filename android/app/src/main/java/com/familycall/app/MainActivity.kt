@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.familycall.app.databinding.ActivityMainBinding
 import com.familycall.app.signaling.ServerClient
 import com.familycall.app.signaling.UserInfo
+import com.familycall.app.utils.UpdateChecker
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import org.json.JSONObject
@@ -26,6 +27,9 @@ class MainActivity : AppCompatActivity() {
 
         setSupportActionBar(binding.toolbar)
         serverClient = ServerClient.getInstance()
+
+        // Check for updates on startup (silent, non-blocking)
+        UpdateChecker.checkForUpdate(this)
 
         adapter = ContactsAdapter(contacts,
             onCallClick = { contact -> initiateCall(contact) },

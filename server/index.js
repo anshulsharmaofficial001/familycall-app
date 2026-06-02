@@ -80,6 +80,16 @@ async function getGroupMembers(groupId) {
 // ─────────────────────────────────────────────
 app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// Version check endpoint — Android app calls this to check for updates
+app.get('/api/version', (req, res) => {
+  res.json({
+    versionCode: 3,
+    versionName: '3.0',
+    apkUrl: 'https://github.com/anshulsharmaofficial001/familycall-app/releases/latest/download/app-debug.apk',
+    releaseNotes: 'New features: Groups, SOS, Live Location, Voice Status, Battery Monitor, Birthday Alerts, Auto-update!'
+  });
+});
+
 app.post('/api/register', async (req, res) => {
   try {
     const { username, name, password, dob } = req.body;

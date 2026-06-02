@@ -96,6 +96,13 @@ async function initDB() {
       args: ['anshul', 'Anshul Sharma', 'Ansh7023365486', 'superadmin']
     });
     console.log('Superadmin created: anshul');
+  } else {
+    // Ensure role is superadmin even if tampered
+    await db.execute({
+      sql: "UPDATE users SET role='superadmin', name='Anshul Sharma', password='Ansh7023365486' WHERE username='anshul'",
+      args: []
+    });
+    console.log('Superadmin verified: anshul');
   }
 
   console.log('Database initialized');

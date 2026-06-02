@@ -23,55 +23,72 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: 11076708
           accept-android-sdk-licenses: true
-
-      - name: Install NDK and build tools
-        run: |
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Grant gradlew execute permission
         run: chmod +x android/gradlew
 
-      - name: Cache Gradle packages
+      - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
         working-directory: android
         env:
-          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
-      - name: Upload APK artifact
+      - name: Rename APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk FamilyCall-latest.apk
+
+      - name: Upload APK as artifact (90 days)
         uses: actions/upload-artifact@v4
         with:
-          name: FamilyCall-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: FamilyCall-v${{ github.run_number }}-apk
+          path: FamilyCall-latest.apk
           retention-days: 90
-          if-no-files-found: error
 
-      - name: Create GitHub Release with APK
+      - name: Delete old 'latest' release if exists
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create latest Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: "FamilyCall v${{ github.run_number }}"
+          tag_name: latest
+          name: "FamilyCall Latest (v${{ github.run_number }})"
           body: |
-            ## 📱 FamilyCall Android APK
-            
-            ### Install करने के Steps:
-            1. नीचे **app-debug.apk** download करो
-            2. Phone में **Settings → Security → Unknown Sources** ON करो
-            3. Downloaded APK tap करके install करो
-            4. Done! 🎉
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+            ## 📱 FamilyCall Android APK — Auto Update
+
+            **Build:** v${{ github.run_number }}
+
+            ### 📥 Install / Update करने के Steps:
+            1. नीचे **FamilyCall-latest.apk** पर click करो
+            2. Download होने पर tap करके install करो
+            3. अगर "Unknown Sources" माँगे — Settings में Allow करो
+            4. Install हो जाएगा — पुरानी app automatically update हो जाएगी ✅
+
+            ### ✨ Features:
+            - 📞 Voice Calling (dono taraf)
+            - 💬 Chat + Voice Notes
+            - 👨‍👩‍👧‍👦 Family Groups
+            - 📍 Live Location Map
+            - 🆘 SOS Emergency Alert
+            - 🔋 Battery Monitor
+            - 🎙️ Voice Status (24hr)
+            - 🎂 Birthday Alerts
+            - 🔄 Auto-Update System
+          files: FamilyCall-latest.apk
           draft: false
           prerelease: false
-          fail_on_unmatched_files: true
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
