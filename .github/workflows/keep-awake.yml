@@ -9,4 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Render server
-        run: curl -s -o /dev/null -w "%{http_code}" https://familycall-server-tpyh.onrender.com
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://familycall-server-tpyh.onrender.com/ping)
+          echo "Server ping status: $STATUS"
