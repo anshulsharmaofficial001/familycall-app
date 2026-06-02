@@ -118,7 +118,11 @@ function handleMsg(msg) {
       currentCallId=msg.callId;
       $('callStatusText').textContent='Ringing…';
       $('callTimer').classList.add('hide');
-      startCapture();
+      // Caller starts capture — playCtx already created in startCall() user gesture
+      audioStarted=false;
+      txAudioChunks=0; rxAudioChunks=0; playedAudioChunks=0;
+      // Small delay to let WS settle
+      setTimeout(()=>startCapture(), 100);
       break;
 
     case 'call_accepted':
@@ -187,8 +191,12 @@ const SAMPLE_RATE = 16000;
 const PROC_BUFFER = 4096; // ~256ms per chunk at 16kHz
 
 async function startCapture(){
-  if(audioStarted)return;
+  if(audioStarted){
+    slog('capture_already_started',{callId:currentCallId});
+    return;
+  }
   audioStarted=true;
+  slog('capture_attempting',{callId:currentCallId,audioStarted});
 
   try{
     micStream=await navigator.mediaDevices.getUserMedia({
@@ -435,8 +443,10 @@ $('acceptBtn').onclick=async()=>{
   $('incomingPage').classList.add('hide');
   $('callingPage').classList.remove('hide');
   startCallTimer();
+  // Callee starts capture — force reset flag
   audioStarted=false;
-  txAudioChunks=0;rxAudioChunks=0;playedAudioChunks=0;
+  txAudioChunks=0; rxAudioChunks=0; playedAudioChunks=0;
+  slog('callee_accept_capture_start',{callId:currentCallId});
   startCapture();
 };
 
