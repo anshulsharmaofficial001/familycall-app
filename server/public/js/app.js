@@ -38,6 +38,53 @@ let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
 
 const $ = id => document.getElementById(id);
 
+/* ── State ── */
+let callerInfoStore = {name:'',username:'',avatar:null};
+let friendsCache = [];
+let myAvatar = null;
+let myRole = '';
+
+/* ── Avatar helper ── */
+function setAvatarEl(el, name, avatarB64, isCreator) {
+  if (!el) return;
+  el.innerHTML = '';
+  if (avatarB64) {
+    const img = document.createElement('img');
+    img.src = avatarB64;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+    el.appendChild(img);
+  } else {
+    el.textContent = (name||'?').charAt(0).toUpperCase();
+  }
+}
+
+function updateTopbar() {
+  const av = $('topbarAvatar');
+  if (!av) return;
+  av.innerHTML = '';
+  if (myAvatar) {
+    const img = document.createElement('img');
+    img.src = myAvatar;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%';
+    av.appendChild(img);
+  } else {
+    av.textContent = (myName||'?').charAt(0).toUpperCase();
+  }
+  if (myRole === 'superadmin') {
+    av.className = 'topbar-avatar creator-ring';
+  } else {
+    av.className = 'topbar-avatar';
+  }
+  const statusLine = $('userStatusLine');
+  if (statusLine) {
+    if (myRole === 'superadmin') {
+      statusLine.innerHTML = `<span id="myName">${myName}</span> <span style="color:var(--gold);font-family:Pacifico,cursive;font-size:11px;animation:creator-glow 2s infinite">✦ Creator</span>`;
+    } else {
+      statusLine.innerHTML = `<span id="myName">${myName}</span> · @<span id="myUser">${myUsername}</span>`;
+    }
+  }
+}
+
 /* ── Notifications ── */
 if (Notification && Notification.permission === 'default') {
   Notification.requestPermission().catch(() => {});
@@ -120,19 +167,14 @@ function connectApp(username, name, role) {
   myUsername=username; myName=name; myRole=role||'user';
   const AC = window.AudioContext || window.webkitAudioContext;
   slog('client_ready',{ua:navigator.userAgent, audioWorklet:!!(AC&&AC.prototype&&('audioWorklet' in AC.prototype))});
-  $('myName').textContent=name; $('myUser').textContent=username;
-  // Show superadmin badge in topbar if applicable
-  if (myRole === 'superadmin') {
-    const brand = document.querySelector('.topbar-brand');
-    if (brand && !brand.querySelector('.sa-badge')) {
-      const badge = document.createElement('span');
-      badge.className='sa-badge';
-      badge.textContent=' ⬡ CREATOR';
-      badge.style.cssText='font-size:9px;color:#ffff00;letter-spacing:2px;margin-left:6px;text-shadow:0 0 8px #ffff00';
-      brand.appendChild(badge);
-    }
-  }
   $('loginPage').classList.add('hide'); $('registerPage').classList.add('hide'); $('mainPage').classList.remove('hide');
+  // Load profile for avatar
+  fetch(`${HTTP_URL}/api/profile/${username}`).then(r=>r.json()).then(u=>{
+    if(u.avatar) myAvatar=u.avatar;
+    if(u.role) myRole=u.role;
+    if(u.name) myName=u.name;
+    updateTopbar();
+  }).catch(()=>{ updateTopbar(); });
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
   ws.onopen=()=>{slog('ws_open',{});loadContacts();refreshInterval=setInterval(loadContacts,8000);};
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
@@ -149,8 +191,9 @@ function handleMsg(msg) {
     case 'incoming_call':
       if (currentCallId){send({type:'reject_call',callId:msg.callId});return;}
       currentCallId=msg.callId;
+      callerInfoStore = {name: msg.callerName, username: msg.callerUsername, avatar: msg.callerAvatar||null};
       $('incomingName').textContent=msg.callerName;
-      $('incomingAvatarLetter').textContent=msg.callerName.charAt(0).toUpperCase();
+      setAvatarEl($('incomingAvatarEl'), msg.callerName, msg.callerAvatar||null);
       $('incomingPage').classList.remove('hide');
       $('mainPage').classList.add('hide');
       startRing();
@@ -451,7 +494,9 @@ async function startCall(username, name){
   callChatTarget = username;
   await ensurePlayCtx();
   $('callDisplayName').textContent=name;
-  $('callAvatarLetter').textContent=name.charAt(0).toUpperCase();
+  // fetch avatar for this contact
+  const friend = friendsCache.find(f=>f.username===username);
+  setAvatarEl($('callAvatarEl'), name, friend&&friend.avatar||null);
   $('callStatusText').textContent='Calling…';
   $('callTimer').classList.add('hide');
   $('callingPage').classList.remove('hide');
@@ -475,7 +520,8 @@ $('acceptBtn').onclick=async()=>{
   await ensurePlayCtx();
   send({type:'accept_call',callId:currentCallId});
   $('callDisplayName').textContent=$('incomingName').textContent;
-  $('callAvatarLetter').textContent=$('incomingName').textContent.charAt(0).toUpperCase();
+  setAvatarEl($('callAvatarEl'), callerInfoStore.name, callerInfoStore.avatar||null);
+  callChatTarget = callerInfoStore.username||'';
   $('callStatusText').textContent='Connected';
   $('callTimer').classList.remove('hide');
   $('incomingPage').classList.add('hide');
@@ -606,70 +652,62 @@ async function loadContacts(){
     const friends = data.friends || [];
     const pendingIn = data.pendingIn || [];
     const pendingOut = data.pendingOut || [];
+    friendsCache = friends;
 
-    const list=$('contactsList');
-    let html = '';
+    const list = $('contactsList');
+    const pendingDiv = $('pendingRequests');
 
-    // Pending incoming requests section
+    // Pending incoming
     if (pendingIn.length > 0) {
-      html += '<div class="section-header">⚡ PENDING REQUESTS</div>';
-      for (const fromKey of pendingIn) {
-        html += `<div class="contact-item">
-          <div class="contact-avatar" style="background:linear-gradient(135deg,rgba(255,0,128,0.2),rgba(0,245,255,0.2))">${fromKey.charAt(0).toUpperCase()}</div>
-          <div class="contact-info">
-            <div class="contact-name">${fromKey}</div>
-            <div class="contact-user">Wants to connect</div>
-          </div>
-          <div class="contact-actions">
-            <button class="action-btn call-btn" onclick="acceptFriend('${fromKey}')">✓</button>
-          </div>
-        </div>`;
-      }
-    }
-
-    // Pending outgoing
-    if (pendingOut.length > 0) {
-      html += '<div class="section-header">⏳ SENT REQUESTS</div>';
-      for (const toKey of pendingOut) {
-        html += `<div class="contact-item">
-          <div class="contact-avatar" style="opacity:.5">${toKey.charAt(0).toUpperCase()}</div>
-          <div class="contact-info">
-            <div class="contact-name">${toKey}</div>
-            <div class="contact-user">Request pending…</div>
-          </div>
-        </div>`;
-      }
-    }
-
-    // Friends list
-    if (friends.length > 0) {
-      html += '<div class="section-header">◈ CONNECTED NODES</div>';
-      html += friends.map(u=>{
-        const badge = (u.role==='superadmin') ? '<span style="color:#ffff00;font-size:9px;letter-spacing:1px"> ⬡ CREATOR</span>' : '';
-        const avatarHtml = u.avatar
-          ? `<div class="contact-avatar" style="padding:0;overflow:hidden"><img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:0"></div>`
-          : `<div class="contact-avatar">${u.name.charAt(0).toUpperCase()}<span class="status-dot ${u.online?'dot-on':'dot-off'}"></span></div>`;
-        return `<div class="contact-item">
-          ${avatarHtml}
-          <div class="contact-info">
-            <div class="contact-name">${u.name}${badge}</div>
-            <div class="contact-user">@${u.username} · ${u.online?'Online':'Offline'}</div>
-          </div>
-          <div class="contact-actions">
-            <button class="action-btn chat-btn-sm" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">💬</button>
-            <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">📞</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
-
-    if (!html) {
-      list.innerHTML='';
-      $('noContacts').classList.remove('hide');
+      pendingDiv.innerHTML = `<div class="section-title">🔔 Friend Requests</div>` +
+        pendingIn.map(u => `
+          <div class="req-item">
+            <div class="contact-avatar" style="width:38px;height:38px;font-size:14px;margin-right:10px;flex-shrink:0">${u.name ? u.name.charAt(0).toUpperCase() : u.charAt(0).toUpperCase()}</div>
+            <div class="req-name">${u.name||u} <span style="font-size:11px;color:var(--text2)">@${u.username||u}</span></div>
+            <div class="req-btns">
+              <button class="req-accept" onclick="acceptFriend('${u.username||u}')">✓ Accept</button>
+              <button class="req-decline" onclick="declineFriend('${u.username||u}')">✕</button>
+            </div>
+          </div>`).join('');
     } else {
-      $('noContacts').classList.add('hide');
-      list.innerHTML=html;
+      pendingDiv.innerHTML = '';
     }
+
+    if (!friends.length) {
+      list.innerHTML = '';
+      $('noContacts').classList.remove('hide');
+      return;
+    }
+    $('noContacts').classList.add('hide');
+
+    list.innerHTML = `<div class="section-title">👨‍👩‍👧‍👦 Family & Friends</div>` +
+      friends.map(u => {
+        const isCreator = u.role === 'superadmin';
+        const avatarClass = isCreator ? 'contact-avatar creator-av' : 'contact-avatar';
+        const avatarContent = u.avatar
+          ? `<img src="${u.avatar}" alt="${u.name}">`
+          : u.name.charAt(0).toUpperCase();
+        const creatorBadge = isCreator
+          ? `<span class="creator-badge">✦ Creator</span>` : '';
+        const statusText = u.online
+          ? `<span style="color:var(--green);font-weight:700">● Online</span>`
+          : `<span style="color:var(--text2)">○ Offline</span>`;
+        return `
+          <div class="contact-item">
+            <div class="${avatarClass}">
+              ${avatarContent}
+              <span class="status-dot ${u.online?'dot-on':'dot-off'}"></span>
+            </div>
+            <div class="contact-info">
+              <div class="contact-name">${u.name} ${creatorBadge}</div>
+              <div class="contact-sub">@${u.username} · ${statusText}</div>
+            </div>
+            <div class="contact-actions">
+              <button class="action-btn chat-btn-sm" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">💬</button>
+              <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">📞</button>
+            </div>
+          </div>`;
+      }).join('');
   } catch(e) {
     console.error('loadContacts error', e);
   }
@@ -677,28 +715,31 @@ async function loadContacts(){
 }
 
 async function searchUsers(q) {
-  if (!q || q.length < 1) { loadContacts(); return; }
+  const resultDiv = $('searchResults');
+  if (!q || q.length < 1) { resultDiv.innerHTML=''; return; }
   try {
     const results = await fetch(`${HTTP_URL}/api/search/${encodeURIComponent(q)}`).then(r=>r.json());
-    const list=$('contactsList');
-    $('noContacts').classList.add('hide');
-    if(!results.length){ list.innerHTML='<div class="empty-state"><div class="empty-icon">◈</div><p>No users found</p></div>'; return; }
-    list.innerHTML='<div class="section-header">🔍 SEARCH RESULTS</div>'+results.map(u=>{
-      const badge = (u.role==='superadmin') ? '<span style="color:#ffff00;font-size:9px"> ⬡ CREATOR</span>' : '';
-      const avatarHtml = u.avatar
-        ? `<div class="contact-avatar" style="padding:0;overflow:hidden"><img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:0"></div>`
-        : `<div class="contact-avatar">${u.name.charAt(0).toUpperCase()}</div>`;
-      return `<div class="contact-item">
-        ${avatarHtml}
-        <div class="contact-info">
-          <div class="contact-name">${u.name}${badge}</div>
-          <div class="contact-user">@${u.username}</div>
-        </div>
-        <div class="contact-actions">
-          <button class="action-btn chat-btn-sm" onclick="sendFriendRequest('${u.username}')">+Add</button>
-        </div>
-      </div>`;
-    }).join('');
+    if (!results.length) {
+      resultDiv.innerHTML='<div class="section-title">🔍 Search Results</div><div class="empty-state" style="padding:20px"><div class="empty-icon" style="font-size:32px">🔍</div><p>No users found</p></div>';
+      return;
+    }
+    resultDiv.innerHTML = `<div class="section-title">🔍 Search Results</div>` +
+      results.map(u => {
+        const isCreator = u.role==='superadmin';
+        const avatarContent = u.avatar ? `<img src="${u.avatar}" alt="${u.name}">` : u.name.charAt(0).toUpperCase();
+        const creatorBadge = isCreator ? `<span class="creator-badge">✦ Creator</span>` : '';
+        return `
+          <div class="contact-item">
+            <div class="contact-avatar ${isCreator?'creator-av':''}">${avatarContent}</div>
+            <div class="contact-info">
+              <div class="contact-name">${u.name} ${creatorBadge}</div>
+              <div class="contact-sub">@${u.username}</div>
+            </div>
+            <div class="contact-actions">
+              <button class="action-btn add-btn" onclick="sendFriendRequest('${u.username}')">+ Add</button>
+            </div>
+          </div>`;
+      }).join('');
   } catch(e) {}
 }
 
@@ -759,22 +800,29 @@ function loadChatContacts(){
     const friends = data.friends || [];
     fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(msgs=>{
       $('chatContactsList').innerHTML = friends.length === 0
-        ? '<div class="empty-state"><div class="empty-icon">◈</div><p>No friends yet — add some!</p></div>'
-        : friends.map(u=>`
-          <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
-            <div class="contact-avatar" style="background:#5c6bc0">${u.name.charAt(0).toUpperCase()}</div>
-            <div class="contact-info">
-              <div class="contact-name">${u.name}</div>
-              <div class="contact-user">${msgs[u.username]?msgs[u.username].length+' messages':'Start a conversation'}</div>
-            </div>
-            <div style="color:#5f6368;font-size:20px">›</div>
-          </div>`).join('');
+        ? '<div class="empty-state"><div class="empty-icon">💬</div><p>No friends yet</p><small>Add family members first!</small></div>'
+        : `<div class="section-title">💬 Messages</div>` + friends.map(u=>{
+            const avatarContent = u.avatar ? `<img src="${u.avatar}" alt="${u.name}">` : u.name.charAt(0).toUpperCase();
+            const msgCount = msgs[u.username] ? msgs[u.username].length : 0;
+            return `
+              <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
+                <div class="contact-avatar ${u.role==='superadmin'?'creator-av':''}">${avatarContent}</div>
+                <div class="contact-info">
+                  <div class="contact-name">${u.name}</div>
+                  <div class="contact-sub">${msgCount ? msgCount+' messages' : 'Say hello! 👋'}</div>
+                </div>
+                <div style="color:var(--text2);font-size:22px">›</div>
+              </div>`;
+          }).join('');
     });
   });
 }
 
 function openChat(username,name){
-  chatTarget=username;$('chatWith').textContent=name||('@'+username);
+  chatTarget=username;
+  const friend = friendsCache.find(f=>f.username===username);
+  const displayName = name || (friend&&friend.name) || username;
+  $('chatWith').textContent = '💬 ' + displayName;
   $('chatListView').classList.add('hide');$('chatAreaView').classList.remove('hide');
   fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(data=>{
     $('chatMessages').innerHTML=(data[username]||[]).map(m=>`<div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">${escHtml(m.text)}</div>`).join('');
@@ -856,7 +904,7 @@ function appendVoiceMsg(from,b64,mime,mine){
   const audio=document.createElement('audio');
   audio.controls=true;
   audio.src=url;
-  audio.style.cssText='width:180px;height:32px;filter:invert(1) hue-rotate(180deg)';
+  audio.style.cssText='width:200px;height:36px;border-radius:20px';
   div.appendChild(audio);
   $('chatMessages').appendChild(div);
   $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
@@ -868,12 +916,18 @@ function appendVoiceMsg(from,b64,mime,mine){
 function openProfileModal(){
   const modal = $('profileModal');
   if(modal) modal.classList.remove('hide');
-  // Load current profile
   fetch(`${HTTP_URL}/api/profile/${myUsername}`).then(r=>r.json()).then(u=>{
     const ni = $('profileNameInput');
     if(ni) ni.value = u.name || myName;
     const preview = $('profileAvatarPreview');
-    if(preview && u.avatar) { preview.src=u.avatar; preview.style.display='block'; }
+    if(preview) {
+      if(u.avatar){
+        preview.innerHTML = `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+        preview.setAttribute('data-b64', u.avatar);
+      } else {
+        preview.textContent = (myName||'?').charAt(0).toUpperCase();
+      }
+    }
   }).catch(()=>{});
 }
 
@@ -884,36 +938,46 @@ function closeProfileModal(){
 
 function saveProfile(){
   const name = $('profileNameInput') ? $('profileNameInput').value.trim() : '';
-  const avatar = $('profileAvatarPreview') ? $('profileAvatarPreview').getAttribute('data-b64') || null : null;
+  const preview = $('profileAvatarPreview');
+  const avatar = preview ? (preview.getAttribute('data-b64') || null) : null;
   fetch(`${HTTP_URL}/api/profile`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ username: myUsername, name: name||undefined, avatar: avatar||undefined })
   }).then(r=>r.json()).then(r=>{
     if(r.success){
-      if(name){ myName=r.user.name; localStorage.setItem('fc_name',r.user.name); $('myName').textContent=r.user.name; }
-      showToast('Profile updated');
+      if(name){ myName=r.user.name; localStorage.setItem('fc_name',r.user.name); }
+      if(avatar){ myAvatar=avatar; }
+      updateTopbar();
+      showToast('✅ Profile updated!');
       closeProfileModal();
       loadContacts();
     } else { alert(r.error||'Update failed'); }
   }).catch(()=>alert('Error updating profile'));
 }
 
-function handleAvatarUpload(input){
-  const file = input.files[0];
-  if(!file) return;
-  if(file.size > 60000) { alert('Image too large. Please use an image under 50KB.'); return; }
-  const reader = new FileReader();
-  reader.onloadend = () => {
-    const b64 = reader.result; // data:image/...;base64,...
-    const preview = $('profileAvatarPreview');
-    if(preview){ preview.src=b64; preview.style.display='block'; preview.setAttribute('data-b64', b64); }
-  };
-  reader.readAsDataURL(file);
-}
-
-// Profile button in topbar
-const profileBtn = document.getElementById('profileBtn');
-if(profileBtn) profileBtn.onclick = openProfileModal;
+// Handle avatar file input — no size limit
+document.addEventListener('DOMContentLoaded', ()=>{
+  const fileInput = $('avatarFileInput');
+  if(fileInput) {
+    fileInput.onchange = function(){
+      const file = this.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const b64 = reader.result;
+        const preview = $('profileAvatarPreview');
+        if(preview){
+          preview.innerHTML = `<img src="${b64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+          preview.setAttribute('data-b64', b64);
+        }
+        // Also update topbar live
+        myAvatar = b64;
+        updateTopbar();
+      };
+      reader.readAsDataURL(file);
+    };
+  }
+});
 
 /* ═══════════════════════════════════════════
    SECTION HEADER STYLE (injected)
