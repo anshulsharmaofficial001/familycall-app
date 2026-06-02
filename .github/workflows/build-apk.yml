@@ -18,37 +18,67 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+          accept-android-sdk-licenses: true
 
-      - name: Make gradlew executable
+      - name: Install NDK and build tools
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Grant gradlew execute permission
         run: chmod +x android/gradlew
 
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --stacktrace
         working-directory: android
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FamilyCall-debug
+          name: FamilyCall-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+          retention-days: 90
+          if-no-files-found: error
 
-      - name: Create Release
+      - name: Create GitHub Release with APK
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/master'
         with:
-          tag_name: v${{ github.run_number }}
-          name: FamilyCall v${{ github.run_number }}
+          tag_name: build-${{ github.run_number }}
+          name: "FamilyCall v${{ github.run_number }}"
           body: |
-            📱 FamilyCall Android APK
+            ## 📱 FamilyCall Android APK
             
-            Install करने के लिए:
-            1. APK download करो
-            2. Phone में Settings → Security → Unknown Sources ON करो
-            3. APK install करो
+            ### Install करने के Steps:
+            1. नीचे **app-debug.apk** download करो
+            2. Phone में **Settings → Security → Unknown Sources** ON करो
+               (या Settings → Apps → Special Access → Install Unknown Apps → Chrome → Allow)
+            3. Downloaded APK tap करके install करो
+            4. Done! 🎉
+            
+            ### Features:
+            - 📞 Voice Calling (both sides)
+            - 💬 Chat & Voice Notes  
+            - 👨‍👩‍👧‍👦 Family Groups
+            - 📍 Live Location
+            - 🆘 SOS Emergency
+            - 🔋 Battery Monitor
+            - 🎙️ Voice Status
+            - 🎂 Birthday Alerts
           files: android/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
