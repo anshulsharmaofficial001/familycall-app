@@ -495,6 +495,31 @@ app.get('/api/reset', async (req, res) => {
   res.json({ success: true, message: 'Active calls cleared' });
 });
 
+// ── Superadmin: Delete user (only anshul can use this, anshul cannot be deleted) ──
+app.post('/api/admin/delete-user', async (req, res) => {
+  try {
+    const { requestedBy, targetUsername } = req.body;
+    if (!requestedBy || !targetUsername) return res.status(400).json({ error: 'Missing params' });
+    const requester = await getUserRow(requestedBy.toLowerCase());
+    if (!requester || requester.role !== 'superadmin') return res.status(403).json({ error: 'Only superadmin can delete users' });
+    const target = targetUsername.toLowerCase();
+    if (target === 'anshul') return res.status(403).json({ error: 'Cannot delete superadmin' });
+    // Delete user and all their data
+    await db.execute({ sql: 'DELETE FROM friends WHERE user1=? OR user2=?', args: [target, target] });
+    await db.execute({ sql: 'DELETE FROM messages WHERE from_user=? OR to_target=?', args: [target, target] });
+    await db.execute({ sql: 'DELETE FROM locations WHERE username=?', args: [target] });
+    await db.execute({ sql: 'DELETE FROM voice_status WHERE username=?', args: [target] });
+    await db.execute({ sql: 'DELETE FROM sos_alerts WHERE username=?', args: [target] });
+    await db.execute({ sql: 'DELETE FROM group_members WHERE username=?', args: [target] });
+    await db.execute({ sql: 'DELETE FROM users WHERE username=?', args: [target] });
+    // Disconnect if online
+    const ws = onlineUsers[target];
+    if (ws) { ws.close(); delete onlineUsers[target]; }
+    console.log(`User @${target} deleted by superadmin`);
+    res.json({ success: true, message: `@${target} deleted` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─────────────────────────────────────────────
 // WEBSOCKET
 // ─────────────────────────────────────────────
