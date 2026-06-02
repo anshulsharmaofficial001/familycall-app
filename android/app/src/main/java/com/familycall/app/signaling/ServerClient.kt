@@ -76,20 +76,30 @@ class ServerClient private constructor() {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: "{}"
                 val json = JSONObject(body)
-                callback(json.optBoolean("success", false), json.optString("error", ""))
+                val success = json.optBoolean("success", false)
+                if (success) {
+                    val user = json.optJSONObject("user")
+                    val name = user?.optString("name") ?: ""
+                    val role = user?.optString("role") ?: "user"
+                    if (name.isNotEmpty()) FamilyCallApp.currentUserName = name
+                    FamilyCallApp.currentRole = role
+                }
+                callback(success, json.optString("error", ""))
             }
         })
     }
 
     fun getAllUsers(callback: (List<UserInfo>) -> Unit) {
-        val request = Request.Builder().url("$baseUrl/api/users").get().build()
+        // Now uses friends endpoint instead of all-users
+        val username = FamilyCallApp.currentUsername
+        if (username.isEmpty()) { callback(emptyList()); return }
+        val request = Request.Builder().url("$baseUrl/api/friends/$username").get().build()
         httpClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                callback(emptyList())
-            }
+            override fun onFailure(call: Call, e: IOException) { callback(emptyList()) }
             override fun onResponse(call: Call, response: Response) {
-                val body = response.body?.string() ?: "[]"
-                val arr = JSONArray(body)
+                val body = response.body?.string() ?: "{}"
+                val json = JSONObject(body)
+                val arr = json.optJSONArray("friends") ?: org.json.JSONArray()
                 val users = mutableListOf<UserInfo>()
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
@@ -193,18 +203,20 @@ class ServerClient private constructor() {
     }
 
     fun getChatMessages(username: String, callback: (List<JSONObject>) -> Unit) {
-        val request = Request.Builder().url("$baseUrl/api/messages/$username").get().build()
+        val myUser = FamilyCallApp.currentUsername
+        val request = Request.Builder().url("$baseUrl/api/messages/$myUser").get().build()
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) { callback(emptyList()) }
             override fun onResponse(call: Call, response: Response) {
-                val body = response.body?.string() ?: "{}"
-                val json = JSONObject(body)
-                val myUser = FamilyCallApp.currentUsername
-                val key = if (myUser < username) "$myUser:$username" else "$username:$myUser"
-                val arr = json.optJSONArray(key) ?: JSONArray()
-                val msgs = mutableListOf<JSONObject>()
-                for (i in 0 until arr.length()) msgs.add(arr.getJSONObject(i))
-                callback(msgs)
+                try {
+                    val body = response.body?.string() ?: "{}"
+                    val json = JSONObject(body)
+                    // New format: keyed by partner username
+                    val arr = json.optJSONArray(username) ?: org.json.JSONArray()
+                    val msgs = mutableListOf<JSONObject>()
+                    for (i in 0 until arr.length()) msgs.add(arr.getJSONObject(i))
+                    callback(msgs)
+                } catch (e: Exception) { callback(emptyList()) }
             }
         })
     }

@@ -10,6 +10,7 @@ class FamilyCallApp : Application() {
     companion object {
         var currentUserName: String = ""
         var currentUsername: String = ""
+        var currentRole: String = "user"
     }
 
     override fun onCreate() {

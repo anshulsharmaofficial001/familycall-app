@@ -179,6 +179,14 @@ app.get('/api/friends/:username', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Legacy endpoint for Android app compatibility
+app.get('/api/users', async (req, res) => {
+  try {
+    const r = await db.execute('SELECT username, name, role, avatar FROM users LIMIT 100');
+    res.json(r.rows.map(u => ({ ...u, online: !!onlineUsers[u.username] })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/search/:query', async (req, res) => {
   try {
     const q = req.params.query.toLowerCase();
