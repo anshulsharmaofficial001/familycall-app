@@ -148,6 +148,7 @@ function updateTopbar() {
       statusLine.innerHTML = `${dot} · @${myUsername}`;
     }
   }
+  showAdminButton();
 }
 
 /* ── Notifications ── */
@@ -1599,6 +1600,83 @@ function declineFriend(fromUsername) {
   showToast('Request declined');
   loadContacts();
 }
+
+/* ═══════════════════════════════════════════
+   ADMIN PANEL (superadmin only)
+═══════════════════════════════════════════ */
+function showAdminButton() {
+  const btn = document.getElementById('adminPanelBtn');
+  if (btn && myRole === 'superadmin') btn.style.display = 'inline-flex';
+}
+
+async function openAdminPanel() {
+  if (myRole !== 'superadmin') return;
+  const modal = document.getElementById('adminModal');
+  if (!modal) return;
+  modal.classList.remove('hide');
+  const listEl = document.getElementById('adminUserList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2)">Loading...</div>';
+  try {
+    const users = await fetch(`${HTTP_URL}/api/users`).then(r => r.json());
+    if (!users.length) { listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text2)">No users found</div>'; return; }
+    listEl.innerHTML = users.map(u => {
+      const isSelf = u.username === 'anshul';
+      const avatarBg = u.role === 'superadmin' ? 'linear-gradient(135deg,#FFD700,#FFA500)' : 'linear-gradient(135deg,var(--primary),var(--primary-dark))';
+      const avatarLetter = u.avatar
+        ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+        : u.name.charAt(0).toUpperCase();
+      return `
+        <div style="display:flex;align-items:center;padding:10px 4px;border-bottom:1px solid #EDF2F7;gap:10px">
+          <div style="width:44px;height:44px;border-radius:50%;background:${avatarBg};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0;overflow:hidden">${avatarLetter}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:700;color:var(--text)">${u.name} ${u.role==='superadmin'?'👑':''}</div>
+            <div style="font-size:12px;color:var(--text2)">@${u.username} · ${u.online?'<span style="color:var(--green)">● Online</span>':'<span style="color:#CBD5E0">○ Offline</span>'}</div>
+          </div>
+          ${isSelf
+            ? `<div style="font-size:11px;color:var(--gold2);font-weight:700;padding:6px 12px;background:#FFF8E1;border-radius:10px">Protected</div>`
+            : `<button onclick="adminDeleteUser('${u.username}','${u.name.replace(/'/g,"\\'")}',this)"
+                style="background:#FFEBEE;color:#C62828;border:1.5px solid #EF9A9A;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:Nunito,sans-serif;flex-shrink:0;transition:all .2s">
+                🗑️ Delete
+              </button>`
+          }
+        </div>`;
+    }).join('');
+  } catch(e) {
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#F44336">Error loading users</div>';
+  }
+}
+
+async function adminDeleteUser(username, name, btnEl) {
+  if (myRole !== 'superadmin') return;
+  if (!confirm(`⚠️ Delete @${username} (${name})?\n\nThis will permanently delete their account, messages, and all data.\n\nThis CANNOT be undone!`)) return;
+  // Double confirm for safety
+  if (!confirm(`Final confirm: DELETE @${username}?`)) return;
+  btnEl.textContent = '⏳ Deleting...';
+  btnEl.disabled = true;
+  try {
+    const r = await fetch(`${HTTP_URL}/api/admin/delete-user`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ requestedBy: myUsername, targetUsername: username })
+    }).then(res => res.json());
+    if (r.success) {
+      showToast(`✅ @${username} deleted`);
+      // Remove row from UI
+      btnEl.closest('div[style*="border-bottom"]').remove();
+      loadContacts();
+    } else {
+      alert(r.error || 'Delete failed');
+      btnEl.textContent = '🗑️ Delete';
+      btnEl.disabled = false;
+    }
+  } catch(e) {
+    alert('Error deleting user');
+    btnEl.textContent = '🗑️ Delete';
+    btnEl.disabled = false;
+  }
+}
+
+
 
 /* ═══════════════════════════════════════════
    INIT
