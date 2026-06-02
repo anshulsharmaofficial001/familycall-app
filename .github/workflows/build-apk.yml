@@ -66,21 +66,12 @@ jobs:
             ### Install करने के Steps:
             1. नीचे **app-debug.apk** download करो
             2. Phone में **Settings → Security → Unknown Sources** ON करो
-               (या Settings → Apps → Special Access → Install Unknown Apps → Chrome → Allow)
             3. Downloaded APK tap करके install करो
             4. Done! 🎉
-            
-            ### Features:
-            - 📞 Voice Calling (both sides)
-            - 💬 Chat & Voice Notes  
-            - 👨‍👩‍👧‍👦 Family Groups
-            - 📍 Live Location
-            - 🆘 SOS Emergency
-            - 🔋 Battery Monitor
-            - 🎙️ Voice Status
-            - 🎂 Birthday Alerts
           files: android/app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
