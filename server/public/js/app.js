@@ -504,6 +504,22 @@ async function ensurePlayCtx(){
   unlockAudioOutput();
 }
 
+/* Build a WAV ArrayBuffer from PCM16 — universally decodable by ALL browsers */
+function pcm16ToWavBuffer(int16Array, sampleRate) {
+  const numSamples = int16Array.length;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, str) => { for(let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4, 36+numSamples*2, true);
+  writeStr(8,'WAVE'); writeStr(12,'fmt ');
+  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true); view.setUint16(34,16,true);
+  writeStr(36,'data'); view.setUint32(40,numSamples*2,true);
+  new Int16Array(buffer, 44).set(int16Array);
+  return buffer;
+}
+
 /* Build a proper WAV blob from PCM16 data — works on ALL browsers/mobile */
 function pcm16ToWavBlob(int16Array, sampleRate) {
   const numSamples = int16Array.length;
@@ -553,36 +569,29 @@ async function receiveAudio(b64, sourceRate){
     }catch(e){ slog('play_worklet_queue_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state}); }
   }
 
-  /* Try AudioBuffer scheduled playback */
+  /* Path 2: WAV → decodeAudioData → AudioBufferSourceNode
+     WAV is universally decodable. AudioContext is already unlocked from user gesture.
+     This works on ALL mobile browsers — no autoplay block, no sampleRate mismatch. */
   try{
-    // Use playCtx.sampleRate (native) NOT hardcoded SAMPLE_RATE
-    const out = resampleFloat32(f32, sr, playCtx.sampleRate);
-    const ab=playCtx.createBuffer(1, out.length, playCtx.sampleRate);
-    ab.copyToChannel(out, 0);
-    const src=playCtx.createBufferSource();
-    src.buffer=ab;
-    src.connect(playGain || playCtx.destination);
-    const now=playCtx.currentTime;
-    if(playNextTime<now+0.02)playNextTime=now+0.05;
-    src.start(playNextTime);
-    playNextTime+=ab.duration;
-    playedAudioChunks++;
-    if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_scheduled',{chunk:playedAudioChunks,duration:ab.duration,ctxRate:playCtx.sampleRate,state:playCtx.state});
+    const wavBuf = pcm16ToWavBuffer(pcm, sr);
+    playCtx.decodeAudioData(wavBuf, (decoded) => {
+      try{
+        const src = playCtx.createBufferSource();
+        src.buffer = decoded;
+        src.connect(playGain || playCtx.destination);
+        const now = playCtx.currentTime;
+        if(playNextTime < now + 0.02) playNextTime = now + 0.05;
+        src.start(playNextTime);
+        playNextTime += decoded.duration;
+        playedAudioChunks++;
+        if(playedAudioChunks<=5||playedAudioChunks%25===0)
+          slog('play_wav_decoded',{chunk:playedAudioChunks,dur:decoded.duration,ctxRate:playCtx.sampleRate});
+      }catch(e2){ slog('play_wav_src_err',{err:e2.message}); }
+    }, (decErr) => {
+      slog('play_wav_decode_fail',{err:String(decErr),chunk:rxAudioChunks});
+    });
     return;
-  }catch(e){ slog('play_buffer_failed',{err:e.message,chunk:rxAudioChunks}); }
-
-  /* Ultimate fallback: WAV blob + <audio> element — guaranteed on ALL mobile browsers */
-  try{
-    const wav = pcm16ToWavBlob(pcm, sr);
-    const url = URL.createObjectURL(wav);
-    const audio = new Audio(url);
-    audio.volume = 1.0;
-    audio.onended = () => URL.revokeObjectURL(url);
-    audio.onerror = (e) => { slog('wav_audio_err',{chunk:rxAudioChunks}); URL.revokeObjectURL(url); };
-    await audio.play();
-    playedAudioChunks++;
-    slog('play_wav_fallback',{chunk:playedAudioChunks,sourceRate:sr});
-  }catch(e){ slog('play_all_failed',{err:e.message,chunk:rxAudioChunks}); }
+  }catch(e){ slog('play_wav_err',{err:e.message,chunk:rxAudioChunks}); }
 }
 
 function cleanupPlayback(){
