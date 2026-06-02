@@ -145,7 +145,7 @@ function handleMsg(msg) {
       break;
 
     case 'chat':
-      appendChatMsg(msg.from,msg.text,false); loadChatContacts();
+      appendChatMsg(msg.from,msg.text,false,msg.voiceData,msg.voiceMime); loadChatContacts();
       break;
 
     case 'error': alert(msg.message); break;
@@ -560,6 +560,74 @@ $('chatInput').onkeydown=e=>{if(e.key==='Enter')$('chatSendBtn').click();};
 
 function appendChatMsg(from,text,mine){
   if(!mine&&chatTarget!==from)return;
+  const div=document.createElement('div');
+  div.className='chat-msg '+(mine?'chat-mine':'chat-other');
+  div.textContent=text;
+  $('chatMessages').appendChild(div);
+  $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+}
+
+/* ═══════════════════════════════════════════
+   VOICE NOTE
+═══════════════════════════════════════════ */
+let vnRecorder=null, vnStream=null, vnChunks=[], vnRecording=false;
+
+$('voiceNoteBtn').onclick=async function(){
+  if(!chatTarget)return;
+  if(!vnRecording){
+    // Start recording
+    try{
+      vnStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      vnChunks=[];
+      const mime=typeof MediaRecorder!=='undefined'&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';
+      vnRecorder=new MediaRecorder(vnStream,{mimeType:mime});
+      vnRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)vnChunks.push(e.data);};
+      vnRecorder.onstop=async()=>{
+        const blob=new Blob(vnChunks,{type:vnRecorder.mimeType});
+        const reader=new FileReader();
+        reader.onloadend=()=>{
+          const b64=reader.result.split(',')[1];
+          if(b64&&chatTarget){
+            send({type:'chat',to:chatTarget,text:'🎤 [Voice Note]',voiceData:b64,voiceMime:vnRecorder.mimeType});
+            appendVoiceMsg(myUsername,b64,vnRecorder.mimeType,true);
+          }
+        };
+        reader.readAsDataURL(blob);
+        if(vnStream)vnStream.getTracks().forEach(t=>t.stop());
+        vnStream=null;
+      };
+      vnRecorder.start();
+      vnRecording=true;
+      this.textContent='⏹';
+      this.classList.add('recording');
+    }catch(e){alert('Mic denied: '+e.message);}
+  } else {
+    // Stop recording
+    vnRecording=false;
+    this.textContent='🎤';
+    this.classList.remove('recording');
+    if(vnRecorder&&vnRecorder.state!=='inactive')vnRecorder.stop();
+  }
+};
+
+function appendVoiceMsg(from,b64,mime,mine){
+  if(!mine&&chatTarget!==from)return;
+  const div=document.createElement('div');
+  div.className='chat-msg '+(mine?'chat-mine':'chat-other');
+  const blob=new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const audio=document.createElement('audio');
+  audio.controls=true;
+  audio.src=url;
+  audio.style.cssText='width:180px;height:32px;filter:invert(1) hue-rotate(180deg)';
+  div.appendChild(audio);
+  $('chatMessages').appendChild(div);
+  $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+}
+
+function appendChatMsg(from,text,mine,voiceData,voiceMime){
+  if(!mine&&chatTarget!==from)return;
+  if(voiceData){appendVoiceMsg(from,voiceData,voiceMime,mine);return;}
   const div=document.createElement('div');
   div.className='chat-msg '+(mine?'chat-mine':'chat-other');
   div.textContent=text;
