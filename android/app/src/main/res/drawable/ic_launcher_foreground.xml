@@ -16,12 +16,12 @@
     <!-- Door -->
     <path android:fillColor="#4A90D9"
         android:pathData="M46,58 Q46,50 54,50 Q62,50 62,58 L62,78 L46,78 Z"/>
-    <!-- Left window -->
-    <rect android:fillColor="#E8F4FF"
-        android:left="30" android:top="46" android:right="43" android:bottom="57"/>
-    <!-- Right window -->
-    <rect android:fillColor="#E8F4FF"
-        android:left="65" android:top="46" android:right="78" android:bottom="57"/>
+    <!-- Left window: left=30 top=46 right=43 bottom=57 -->
+    <path android:fillColor="#E8F4FF"
+        android:pathData="M30,46 L43,46 L43,57 L30,57 Z"/>
+    <!-- Right window: left=65 top=46 right=78 bottom=57 -->
+    <path android:fillColor="#E8F4FF"
+        android:pathData="M65,46 L78,46 L78,57 L65,57 Z"/>
     <!-- Heart left -->
     <path android:fillColor="#FF6B6B"
         android:pathData="M18,28 C18,25 21,23 23,26 C25,23 28,25 28,28 C28,31 23,35 23,35 C23,35 18,31 18,28Z"/>
