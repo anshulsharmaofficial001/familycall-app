@@ -1,14 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#1E88E5"
-        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background gradient circle -->
+    <path android:fillColor="#4A90D9"
+        android:pathData="M54,54m-54,0a54,54 0,1 1,108 0a54,54 0,1 1,-108 0"/>
+    <!-- House roof -->
+    <path android:fillColor="#FFB347"
+        android:pathData="M54,18 L82,40 L26,40 Z"/>
+    <!-- House body -->
     <path android:fillColor="#FFFFFF"
-        android:pathData="M42,42h24v24H42z"
-        android:strokeWidth="2" android:strokeColor="#FFFFFF"/>
-    <path android:fillColor="#FFFFFF"
-        android:pathData="M48,48h12v12H48z"/>
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="2"
-        android:pathData="M50,54h8M54,50v8" />
+        android:pathData="M28,40 L80,40 L80,78 L28,78 Z"/>
+    <!-- Door -->
+    <path android:fillColor="#4A90D9"
+        android:pathData="M46,58 Q46,50 54,50 Q62,50 62,58 L62,78 L46,78 Z"/>
+    <!-- Left window -->
+    <rect android:fillColor="#E8F4FF"
+        android:left="30" android:top="46" android:right="43" android:bottom="57"/>
+    <!-- Right window -->
+    <rect android:fillColor="#E8F4FF"
+        android:left="65" android:top="46" android:right="78" android:bottom="57"/>
+    <!-- Heart left -->
+    <path android:fillColor="#FF6B6B"
+        android:pathData="M18,28 C18,25 21,23 23,26 C25,23 28,25 28,28 C28,31 23,35 23,35 C23,35 18,31 18,28Z"/>
+    <!-- Heart right -->
+    <path android:fillColor="#FF6B6B"
+        android:pathData="M80,28 C80,25 83,23 85,26 C87,23 90,25 90,28 C90,31 85,35 85,35 C85,35 80,31 80,28Z"/>
 </vector>

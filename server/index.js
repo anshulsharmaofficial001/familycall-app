@@ -1,486 +1,656 @@
-const fs = require('fs');
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const cron = require('node-cron');
+const { db, initDB, pruneMessages, cleanOldLocations, cleanVoiceStatuses } = require('./db');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: '20mb' })); // unlimited photo size
-app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  next();
-});
-
-// Serve app.js directly (bypass CDN cache)
+app.use(express.json({ limit: '20mb' }));
+app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.get('/js/app.js', (req, res) => {
   res.set('Content-Type', 'application/javascript');
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'public', 'js', 'app.js'));
 });
-
 app.use(express.static(path.join(__dirname, 'public')));
 
-const users = {};
-const calls = {};
-const messages = {};
+// In-memory: online status + WS refs + active calls
+const onlineUsers = {}; // username -> ws
+const activeCalls = {}; // callId -> {callerUsername, calleeUsername, callerName, status}
 const logs = [];
-const debugLogFile = path.join(__dirname, 'audio-debug.log');
 
-// ── Pre-create superadmin ──────────────────────────────────────────────────
-users['anshul'] = {
-  username: 'anshul',
-  name: 'Anshul Sharma',
-  password: 'Ansh7023365486',
-  role: 'superadmin',
-  online: false,
-  ws: null,
-  avatar: null,
-  friends: [],
-  pendingIn: [],   // friend requests received
-  pendingOut: []   // friend requests sent
-};
+// ── Init DB ──
+initDB().catch(e => { console.error('DB init failed:', e); process.exit(1); });
 
-function writeDebugLine(entry) {
-  const line = JSON.stringify(entry) + '\n';
-  fs.appendFile(debugLogFile, line, () => {});
-}
+// ── Cron jobs ──
+cron.schedule('*/10 * * * *', () => { cleanOldLocations(); cleanVoiceStatuses(); });
+cron.schedule('0 9 * * *', () => { checkBirthdays(); }); // 9 AM daily
+cron.schedule('0 * * * *', () => { pruneMessages(); });   // hourly prune check
 
-function addLog(username, event, data) {
-  const entry = { ts: new Date().toISOString(), username, event, data };
-  logs.push(entry);
-  if (logs.length > 500) logs.shift();
-  console.log(`[LOG] ${entry.ts} ${username} ${event}`, data || '');
-  writeDebugLine(entry);
-}
-
-function addMsg(from, to, text) {
-  const key = [from, to].sort().join(':');
-  if (!messages[key]) messages[key] = [];
-  const msg = { from, to, text, ts: Date.now() };
-  messages[key].push(msg);
-  if (messages[key].length > 100) messages[key].shift();
-  return msg;
-}
-
-function isOnline(u) {
-  return !!(u && u.ws && u.ws.readyState === WebSocket.OPEN);
-}
-
-// Check if a user is currently in an active call
-function isInCall(username) {
-  for (const call of Object.values(calls)) {
-    if ((call.callerUsername === username || call.calleeUsername === username) &&
-        (call.status === 'ringing' || call.status === 'connected')) {
-      return true;
-    }
+// ─────────────────────────────────────────────
+// HELPER
+// ─────────────────────────────────────────────
+function sendTo(username, obj) {
+  const ws = onlineUsers[username];
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+    return true;
   }
   return false;
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────
-app.post('/api/register', (req, res) => {
-  const { username, name, password } = req.body;
-  if (!username || !name || !password)
-    return res.status(400).json({ error: 'Username, name and password required' });
-  const key = username.toLowerCase();
-  if (users[key]) return res.status(400).json({ error: 'Username already taken' });
-  users[key] = {
-    name, username: key, password, role: 'user', online: false, ws: null,
-    avatar: null, friends: [], pendingIn: [], pendingOut: []
-  };
-  res.json({ success: true, user: { username: key, name, role: 'user' } });
-});
+function addLog(username, event, data) {
+  logs.push({ ts: new Date().toISOString(), username, event, data });
+  if (logs.length > 500) logs.shift();
+}
 
-app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password)
-    return res.status(400).json({ error: 'Username and password required' });
-  const key = username.toLowerCase();
-  const u = users[key];
-  if (!u || u.password !== password)
-    return res.status(401).json({ error: 'Invalid username or password' });
-  res.json({ success: true, user: { username: u.username, name: u.name, role: u.role || 'user' } });
-});
+async function getUserRow(username) {
+  const r = await db.execute({ sql: 'SELECT * FROM users WHERE username = ?', args: [username.toLowerCase()] });
+  return r.rows[0] || null;
+}
 
-// ── Admin: all users ───────────────────────────────────────────────────────
-app.get('/api/users', (req, res) => {
-  const { requester } = req.query;
-  const reqUser = requester ? users[requester.toLowerCase()] : null;
-  // Superadmin sees everyone; others see only friends
-  if (reqUser && reqUser.role === 'superadmin') {
-    const list = Object.values(users).map(u => ({
-      username: u.username, name: u.name, role: u.role || 'user',
-      online: isOnline(u), avatar: u.avatar || null
-    }));
-    return res.json(list);
-  }
-  // Legacy: return all for backward compat if no requester param
-  if (!requester) {
-    const list = Object.values(users).map(u => ({
-      username: u.username, name: u.name, role: u.role || 'user',
-      online: isOnline(u), avatar: u.avatar || null
-    }));
-    return res.json(list);
-  }
-  res.json([]);
-});
-
-app.get('/api/user/:username', (req, res) => {
-  const u = users[req.params.username.toLowerCase()];
-  if (!u) return res.status(404).json({ error: 'User not found' });
-  res.json({ username: u.username, name: u.name, role: u.role || 'user', online: isOnline(u), avatar: u.avatar || null });
-});
-
-// ── Friends ────────────────────────────────────────────────────────────────
-app.get('/api/friends/:username', (req, res) => {
-  const u = users[req.params.username.toLowerCase()];
-  if (!u) return res.status(404).json({ error: 'User not found' });
-  const friendList = (u.friends || []).map(fname => {
-    const f = users[fname];
-    if (!f) return null;
-    return { username: f.username, name: f.name, role: f.role || 'user', online: isOnline(f), avatar: f.avatar || null };
-  }).filter(Boolean);
-  // Also include pending requests info
-  res.json({
-    friends: friendList,
-    pendingIn: u.pendingIn || [],
-    pendingOut: u.pendingOut || []
+async function getFriends(username) {
+  const r = await db.execute({
+    sql: `SELECT u.username, u.name, u.role, u.avatar, u.dob
+          FROM friends f
+          JOIN users u ON (u.username = CASE WHEN f.user1 = ? THEN f.user2 ELSE f.user1 END)
+          WHERE (f.user1 = ? OR f.user2 = ?) AND f.status = 'accepted'`,
+    args: [username, username, username]
   });
+  return r.rows;
+}
+
+async function getGroupMembers(groupId) {
+  const r = await db.execute({
+    sql: `SELECT gm.username, gm.role, u.name, u.avatar
+          FROM group_members gm JOIN users u ON u.username = gm.username
+          WHERE gm.group_id = ?`,
+    args: [groupId]
+  });
+  return r.rows;
+}
+
+// ─────────────────────────────────────────────
+// AUTH ROUTES
+// ─────────────────────────────────────────────
+app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
+app.post('/api/register', async (req, res) => {
+  try {
+    const { username, name, password, dob } = req.body;
+    if (!username || !name || !password) return res.status(400).json({ error: 'Username, name and password required' });
+    const key = username.toLowerCase().trim();
+    if (key === 'anshul') return res.status(400).json({ error: 'Username reserved' });
+    const existing = await getUserRow(key);
+    if (existing) return res.status(400).json({ error: 'Username already taken' });
+    await db.execute({ sql: 'INSERT INTO users (username, name, password, dob) VALUES (?, ?, ?, ?)', args: [key, name, password, dob||null] });
+    res.json({ success: true, user: { username: key, name } });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/friend-request', (req, res) => {
-  const { from, to } = req.body;
-  if (!from || !to) return res.status(400).json({ error: 'from and to required' });
-  const fromKey = from.toLowerCase(), toKey = to.toLowerCase();
-  const fromUser = users[fromKey], toUser = users[toKey];
-  if (!fromUser) return res.status(404).json({ error: 'Sender not found' });
-  if (!toUser) return res.status(404).json({ error: 'User not found' });
-  if (fromKey === toKey) return res.status(400).json({ error: 'Cannot add yourself' });
-  if (fromUser.friends.includes(toKey)) return res.status(400).json({ error: 'Already friends' });
-  if (toUser.pendingIn.includes(fromKey)) return res.status(400).json({ error: 'Request already sent' });
-  toUser.pendingIn.push(fromKey);
-  fromUser.pendingOut.push(toKey);
-  // Notify recipient if online
-  if (isOnline(toUser)) {
-    toUser.ws.send(JSON.stringify({
-      type: 'friend_request', from: fromKey, fromName: fromUser.name
-    }));
-  }
-  addLog(fromKey, 'friend_request_sent', { to: toKey });
-  res.json({ success: true });
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    const u = await getUserRow(username.toLowerCase().trim());
+    if (!u || u.password !== password) return res.status(401).json({ error: 'Invalid username or password' });
+    res.json({ success: true, user: { username: u.username, name: u.name, role: u.role||'user', avatar: u.avatar||null } });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/friend-accept', (req, res) => {
-  const { from, to } = req.body; // from=requester who sent, to=acceptor
-  if (!from || !to) return res.status(400).json({ error: 'from and to required' });
-  const fromKey = from.toLowerCase(), toKey = to.toLowerCase();
-  const fromUser = users[fromKey], toUser = users[toKey];
-  if (!fromUser || !toUser) return res.status(404).json({ error: 'User not found' });
-  // toUser accepts request from fromUser
-  const idx = toUser.pendingIn.indexOf(fromKey);
-  if (idx === -1) return res.status(400).json({ error: 'No pending request from this user' });
-  toUser.pendingIn.splice(idx, 1);
-  const outIdx = fromUser.pendingOut.indexOf(toKey);
-  if (outIdx !== -1) fromUser.pendingOut.splice(outIdx, 1);
-  if (!toUser.friends.includes(fromKey)) toUser.friends.push(fromKey);
-  if (!fromUser.friends.includes(toKey)) fromUser.friends.push(toKey);
-  // Notify both if online
-  if (isOnline(toUser)) {
-    toUser.ws.send(JSON.stringify({ type: 'friend_accepted', with: fromKey, withName: fromUser.name }));
-  }
-  if (isOnline(fromUser)) {
-    fromUser.ws.send(JSON.stringify({ type: 'friend_accepted', with: toKey, withName: toUser.name }));
-  }
-  addLog(toKey, 'friend_accepted', { from: fromKey });
-  res.json({ success: true });
+app.get('/api/user/:username', async (req, res) => {
+  try {
+    const u = await getUserRow(req.params.username);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    res.json({ username: u.username, name: u.name, role: u.role||'user', online: !!onlineUsers[u.username] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Search ─────────────────────────────────────────────────────────────────
-app.get('/api/search/:query', (req, res) => {
-  const q = (req.params.query || '').toLowerCase().trim();
-  if (!q || q.length < 1) return res.json([]);
-  const results = Object.values(users)
-    .filter(u => u.username.includes(q) || u.name.toLowerCase().includes(q))
-    .slice(0, 10)
-    .map(u => ({ username: u.username, name: u.name, role: u.role || 'user', avatar: u.avatar || null }));
-  res.json(results);
+app.get('/api/profile/:username', async (req, res) => {
+  try {
+    const u = await getUserRow(req.params.username);
+    if (!u) return res.status(404).json({ error: 'Not found' });
+    res.json({ username: u.username, name: u.name, role: u.role||'user', avatar: u.avatar||null, dob: u.dob||null });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Profile ────────────────────────────────────────────────────────────────
-app.post('/api/profile', (req, res) => {
-  const { username, name, avatar } = req.body;
-  if (!username) return res.status(400).json({ error: 'username required' });
-  const key = username.toLowerCase();
-  const u = users[key];
-  if (!u) return res.status(404).json({ error: 'User not found' });
-  if (name && name.trim()) u.name = name.trim();
-  if (avatar !== undefined) {
-    // limit to ~50KB base64 (~68KB raw string)
-    if (avatar && avatar.length > 70000) return res.status(400).json({ error: 'Avatar too large (max ~50KB)' });
-    u.avatar = avatar || null;
-  }
-  res.json({ success: true, user: { username: u.username, name: u.name, role: u.role, avatar: u.avatar } });
+app.post('/api/profile', async (req, res) => {
+  try {
+    const { username, name, avatar, dob } = req.body;
+    if (!username) return res.status(400).json({ error: 'Username required' });
+    const u = await getUserRow(username);
+    if (!u) return res.status(404).json({ error: 'User not found' });
+    if (name) await db.execute({ sql: 'UPDATE users SET name = ? WHERE username = ?', args: [name, username] });
+    if (avatar !== undefined) await db.execute({ sql: 'UPDATE users SET avatar = ? WHERE username = ?', args: [avatar, username] });
+    if (dob !== undefined) await db.execute({ sql: 'UPDATE users SET dob = ? WHERE username = ?', args: [dob, username] });
+    const updated = await getUserRow(username);
+    res.json({ success: true, user: { username: updated.username, name: updated.name, role: updated.role, avatar: updated.avatar } });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/profile/:username', (req, res) => {
-  const u = users[req.params.username.toLowerCase()];
-  if (!u) return res.status(404).json({ error: 'User not found' });
-  res.json({ username: u.username, name: u.name, role: u.role || 'user', avatar: u.avatar || null, online: isOnline(u) });
-});
+// ─────────────────────────────────────────────
+// FRIENDS ROUTES
+// ─────────────────────────────────────────────
+app.get('/api/friends/:username', async (req, res) => {
+  try {
+    const username = req.params.username.toLowerCase();
+    const u = await getUserRow(username);
+    if (!u) return res.status(404).json({ error: 'User not found' });
 
-// ── Messages ───────────────────────────────────────────────────────────────
-app.get('/api/messages/:username', (req, res) => {
-  const u = users[req.params.username.toLowerCase()];
-  if (!u) return res.status(404).json({ error: 'User not found' });
-  const result = {};
-  for (const key of Object.keys(messages)) {
-    if (key.includes(req.params.username.toLowerCase())) {
-      const [a, b] = key.split(':');
-      const other = a === req.params.username.toLowerCase() ? b : a;
-      result[other] = messages[key];
+    // Superadmin sees all users as friends
+    let friends;
+    if (u.role === 'superadmin') {
+      const all = await db.execute({ sql: 'SELECT username, name, role, avatar FROM users WHERE username != ?', args: [username] });
+      friends = all.rows.map(r => ({ ...r, online: !!onlineUsers[r.username] }));
+    } else {
+      const rows = await getFriends(username);
+      friends = rows.map(r => ({ ...r, online: !!onlineUsers[r.username] }));
     }
-  }
-  res.json(result);
+
+    const pendingIn = await db.execute({
+      sql: `SELECT f.user1 as username, u.name FROM friends f JOIN users u ON u.username = f.user1 WHERE f.user2 = ? AND f.status = 'pending'`,
+      args: [username]
+    });
+    const pendingOut = await db.execute({
+      sql: `SELECT f.user2 as username, u.name FROM friends f JOIN users u ON u.username = f.user2 WHERE f.user1 = ? AND f.status = 'pending'`,
+      args: [username]
+    });
+
+    res.json({
+      friends,
+      pendingIn: pendingIn.rows,
+      pendingOut: pendingOut.rows
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Logging ────────────────────────────────────────────────────────────────
+app.get('/api/search/:query', async (req, res) => {
+  try {
+    const q = req.params.query.toLowerCase();
+    const r = await db.execute({
+      sql: 'SELECT username, name, role, avatar FROM users WHERE username LIKE ? OR name LIKE ? LIMIT 20',
+      args: [`%${q}%`, `%${q}%`]
+    });
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/friend-request', async (req, res) => {
+  try {
+    const { from, to } = req.body;
+    const fromKey = from.toLowerCase(), toKey = to.toLowerCase();
+    const toUser = await getUserRow(toKey);
+    if (!toUser) return res.status(404).json({ error: 'User not found' });
+    // Check if already friends/pending
+    const existing = await db.execute({
+      sql: 'SELECT * FROM friends WHERE (user1=? AND user2=?) OR (user1=? AND user2=?)',
+      args: [fromKey, toKey, toKey, fromKey]
+    });
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'Already friends or pending' });
+    await db.execute({ sql: 'INSERT INTO friends (user1, user2, status) VALUES (?, ?, ?)', args: [fromKey, toKey, 'pending'] });
+    sendTo(toKey, { type: 'friend_request', from: fromKey, fromName: (await getUserRow(fromKey))?.name });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/friend-accept', async (req, res) => {
+  try {
+    const { from, to } = req.body;
+    const fromKey = from.toLowerCase(), toKey = to.toLowerCase();
+    await db.execute({
+      sql: `UPDATE friends SET status='accepted' WHERE user1=? AND user2=? AND status='pending'`,
+      args: [fromKey, toKey]
+    });
+    sendTo(fromKey, { type: 'friend_accepted', by: toKey, byName: (await getUserRow(toKey))?.name });
+    sendTo(toKey, { type: 'friend_accepted', by: fromKey, byName: (await getUserRow(fromKey))?.name });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// GROUPS ROUTES
+// ─────────────────────────────────────────────
+app.post('/api/groups/create', async (req, res) => {
+  try {
+    const { name, createdBy, members } = req.body;
+    const id = `grp_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
+    await db.execute({ sql: 'INSERT INTO groups_table (id, name, created_by) VALUES (?,?,?)', args: [id, name, createdBy] });
+    const allMembers = [...new Set([createdBy, ...(members||[])])];
+    for (const m of allMembers) {
+      const role = (m === createdBy) ? 'admin' : 'member';
+      await db.execute({ sql: 'INSERT OR IGNORE INTO group_members (group_id, username, role) VALUES (?,?,?)', args: [id, m, role] });
+    }
+    res.json({ success: true, groupId: id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/groups/:username', async (req, res) => {
+  try {
+    const username = req.params.username.toLowerCase();
+    const r = await db.execute({
+      sql: `SELECT g.id, g.name, g.created_by, gm.role FROM groups_table g
+            JOIN group_members gm ON gm.group_id = g.id
+            WHERE gm.username = ?`,
+      args: [username]
+    });
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/groups/:groupId/members', async (req, res) => {
+  try {
+    const members = await getGroupMembers(req.params.groupId);
+    res.json(members.map(m => ({ ...m, online: !!onlineUsers[m.username] })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/groups/:groupId/add-member', async (req, res) => {
+  try {
+    const { username, addedBy } = req.body;
+    const groupId = req.params.groupId;
+    const adder = await db.execute({ sql: 'SELECT role FROM group_members WHERE group_id=? AND username=?', args: [groupId, addedBy] });
+    if (!adder.rows.length || adder.rows[0].role !== 'admin') return res.status(403).json({ error: 'Only admins can add members' });
+    await db.execute({ sql: 'INSERT OR IGNORE INTO group_members (group_id, username, role) VALUES (?,?,?)', args: [groupId, username, 'member'] });
+    sendTo(username, { type: 'added_to_group', groupId });
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// MESSAGES ROUTES (Turso persistent)
+// ─────────────────────────────────────────────
+app.get('/api/messages/:username', async (req, res) => {
+  try {
+    const username = req.params.username.toLowerCase();
+    const r = await db.execute({
+      sql: `SELECT * FROM messages WHERE (from_user=? OR to_target=?) AND is_group=0 ORDER BY ts ASC LIMIT 200`,
+      args: [username, username]
+    });
+    // Group by conversation partner
+    const result = {};
+    for (const msg of r.rows) {
+      const other = msg.from_user === username ? msg.to_target : msg.from_user;
+      if (!result[other]) result[other] = [];
+      result[other].push({ from: msg.from_user, to: msg.to_target, text: msg.text, voiceData: msg.voice_data, voiceMime: msg.voice_mime, ts: msg.ts });
+    }
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/group-messages/:groupId', async (req, res) => {
+  try {
+    const r = await db.execute({
+      sql: `SELECT * FROM messages WHERE to_target=? AND is_group=1 ORDER BY ts ASC LIMIT 200`,
+      args: [req.params.groupId]
+    });
+    res.json(r.rows.map(m => ({ from: m.from_user, text: m.text, voiceData: m.voice_data, voiceMime: m.voice_mime, ts: m.ts })));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// LOCATION ROUTES
+// ─────────────────────────────────────────────
+app.post('/api/location', async (req, res) => {
+  try {
+    const { username, lat, lng, accuracy } = req.body;
+    await db.execute({
+      sql: 'INSERT OR REPLACE INTO locations (username, lat, lng, accuracy, ts) VALUES (?,?,?,?,?)',
+      args: [username, lat, lng, accuracy||null, Date.now()]
+    });
+    // Broadcast to friends
+    const friends = await getFriends(username);
+    const u = await getUserRow(username);
+    for (const f of friends) {
+      sendTo(f.username, { type: 'location_update', username, name: u?.name, lat, lng, ts: Date.now() });
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/locations/:username', async (req, res) => {
+  try {
+    const friends = await getFriends(req.params.username);
+    const names = friends.map(f => f.username);
+    names.push(req.params.username);
+    const cutoff = Date.now() - 60 * 60 * 1000; // last 1hr
+    const result = [];
+    for (const n of names) {
+      const r = await db.execute({ sql: 'SELECT * FROM locations WHERE username=? AND ts > ?', args: [n, cutoff] });
+      if (r.rows.length) {
+        const u = await getUserRow(n);
+        result.push({ ...r.rows[0], name: u?.name, avatar: u?.avatar });
+      }
+    }
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// SOS ROUTES
+// ─────────────────────────────────────────────
+app.post('/api/sos', async (req, res) => {
+  try {
+    const { username, lat, lng, groupId } = req.body;
+    const id = `sos_${Date.now()}`;
+    await db.execute({ sql: 'INSERT INTO sos_alerts (id, username, lat, lng, group_id) VALUES (?,?,?,?,?)', args: [id, username, lat||null, lng||null, groupId||null] });
+    const u = await getUserRow(username);
+    const mapsLink = lat ? `https://maps.google.com/?q=${lat},${lng}` : null;
+    const alert = { type: 'sos_alert', sosId: id, from: username, name: u?.name, lat, lng, mapsLink, ts: Date.now() };
+    // Send to group or all friends
+    if (groupId) {
+      const members = await getGroupMembers(groupId);
+      for (const m of members) { if (m.username !== username) sendTo(m.username, alert); }
+    } else {
+      const friends = await getFriends(username);
+      for (const f of friends) sendTo(f.username, alert);
+    }
+    res.json({ success: true, sosId: id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/sos/cancel', async (req, res) => {
+  try {
+    const { sosId, username } = req.body;
+    await db.execute({ sql: 'UPDATE sos_alerts SET cancelled=1 WHERE id=?', args: [sosId] });
+    const u = await getUserRow(username);
+    const cancel = { type: 'sos_cancelled', sosId, from: username, name: u?.name };
+    const friends = await getFriends(username);
+    for (const f of friends) sendTo(f.username, cancel);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// VOICE STATUS ROUTES
+// ─────────────────────────────────────────────
+app.post('/api/voice-status', async (req, res) => {
+  try {
+    const { username, audioData, audioMime } = req.body;
+    const id = `vs_${Date.now()}_${username}`;
+    // Remove old status for this user first
+    await db.execute({ sql: 'DELETE FROM voice_status WHERE username=?', args: [username] });
+    await db.execute({ sql: 'INSERT INTO voice_status (id, username, audio_data, audio_mime) VALUES (?,?,?,?)', args: [id, username, audioData, audioMime||'audio/webm'] });
+    const u = await getUserRow(username);
+    const friends = await getFriends(username);
+    for (const f of friends) sendTo(f.username, { type: 'new_voice_status', username, name: u?.name, avatar: u?.avatar });
+    res.json({ success: true, id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/voice-status/:username', async (req, res) => {
+  try {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const r = await db.execute({ sql: 'SELECT * FROM voice_status WHERE username=? AND ts > ?', args: [req.params.username, cutoff] });
+    if (!r.rows.length) return res.json({ hasStatus: false });
+    res.json({ hasStatus: true, audioData: r.rows[0].audio_data, audioMime: r.rows[0].audio_mime });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/voice-statuses/:username', async (req, res) => {
+  try {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const friends = await getFriends(req.params.username);
+    const result = [];
+    for (const f of friends) {
+      const r = await db.execute({ sql: 'SELECT username, ts FROM voice_status WHERE username=? AND ts > ?', args: [f.username, cutoff] });
+      if (r.rows.length) result.push({ username: f.username, name: f.name, avatar: f.avatar, ts: r.rows[0].ts });
+    }
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// BIRTHDAY CHECK
+// ─────────────────────────────────────────────
+async function checkBirthdays() {
+  try {
+    const now = new Date();
+    const today = `${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const year = now.getFullYear();
+    const r = await db.execute({ sql: `SELECT * FROM users WHERE dob IS NOT NULL AND substr(dob,6) = ?`, args: [today] });
+    for (const birthdayUser of r.rows) {
+      // Check if already notified this year
+      const alreadyDone = await db.execute({ sql: 'SELECT * FROM birthday_notifs WHERE username=? AND year=?', args: [birthdayUser.username, year] });
+      if (alreadyDone.rows.length) continue;
+      await db.execute({ sql: 'INSERT INTO birthday_notifs (username, year) VALUES (?,?)', args: [birthdayUser.username, year] });
+      // Notify all friends EXCEPT the birthday person
+      const friends = await getFriends(birthdayUser.username);
+      for (const f of friends) {
+        sendTo(f.username, { type: 'birthday_today', username: birthdayUser.username, name: birthdayUser.name });
+      }
+      console.log(`Birthday notification sent for ${birthdayUser.name}`);
+    }
+  } catch(e) { console.error('birthday check error', e); }
+}
+
+// ─────────────────────────────────────────────
+// BATTERY STATUS
+// ─────────────────────────────────────────────
+app.post('/api/battery', async (req, res) => {
+  try {
+    const { username, level, charging } = req.body;
+    const friends = await getFriends(username);
+    const u = await getUserRow(username);
+    for (const f of friends) {
+      sendTo(f.username, { type: 'battery_update', username, name: u?.name, level, charging });
+    }
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────
+// LOGS
+// ─────────────────────────────────────────────
 app.post('/api/log', (req, res) => {
   const { username, event, data } = req.body;
-  addLog(username || 'unknown', event || 'client', data);
+  addLog(username||'unknown', event||'client', data);
   res.json({ ok: true });
 });
-
 app.get('/api/logs/text', (req, res) => {
-  res.setHeader('Content-Type', 'text/plain');
-  res.send(logs.slice(-200).map(l =>
-    `${l.ts} [${l.username}] ${l.event} ${l.data ? JSON.stringify(l.data) : ''}`
-  ).join('\n'));
+  res.setHeader('Content-Type','text/plain');
+  res.send(logs.map(l=>`${l.ts} [${l.username}] ${l.event} ${l.data?JSON.stringify(l.data):''}`).join('\n'));
 });
 
-app.get('/api/audio-debug/file', (req, res) => {
-  res.setHeader('Content-Type', 'text/plain');
-  fs.readFile(debugLogFile, 'utf8', (err, text) => {
-    if (err) return res.send('');
-    res.send(text.split('\n').slice(-500).join('\n'));
-  });
+app.get('/api/reset', async (req, res) => {
+  // Only clears non-persistent data; keeps DB intact
+  Object.keys(activeCalls).forEach(k => delete activeCalls[k]);
+  res.json({ success: true, message: 'Active calls cleared' });
 });
 
-app.get('/api/audio-debug/clear', (req, res) => {
-  logs.length = 0;
-  fs.writeFile(debugLogFile, '', () => {});
-  res.json({ ok: true, message: 'audio debug log cleared' });
-});
-
-app.get('/api/reset', (req, res) => {
-  // Keep superadmin, remove others
-  Object.keys(users).forEach(k => {
-    if (k !== 'anshul') delete users[k];
-  });
-  Object.keys(calls).forEach(k => delete calls[k]);
-  Object.keys(messages).forEach(k => delete messages[k]);
-  res.json({ success: true, message: 'All data cleared (superadmin preserved)' });
-});
-
-// ── Keep-alive for UptimeRobot / Render ───────────────────────────────────
-app.get('/ping', (req, res) => res.json({ ok: true }));
-
-// ── WebSocket ──────────────────────────────────────────────────────────────
-wss.on('connection', (ws, req) => {
+// ─────────────────────────────────────────────
+// WEBSOCKET
+// ─────────────────────────────────────────────
+wss.on('connection', async (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const username = (url.searchParams.get('username') || '').toLowerCase();
-  const name = url.searchParams.get('name');
+  const username = (url.searchParams.get('username') || '').toLowerCase().trim();
+  const name = url.searchParams.get('name') || '';
+  if (!username) { ws.close(); return; }
 
-  if (!username || !name) { ws.close(); return; }
-  if (!users[username]) { ws.close(); return; }
+  const u = await getUserRow(username);
+  if (!u) { ws.close(); return; }
 
-  users[username].ws = ws;
-  users[username].online = true;
+  onlineUsers[username] = ws;
   console.log(`${name} (@${username}) connected`);
-  addLog(username, 'ws_connected', { name });
 
-  ws.send(JSON.stringify({
-    type: 'welcome', username, name,
-    role: users[username].role || 'user'
-  }));
+  ws.send(JSON.stringify({ type: 'welcome', username, name: u.name, role: u.role||'user', avatar: u.avatar||null }));
 
-  // Forward pending calls (user came online while being called)
-  for (const [cid, call] of Object.entries(calls)) {
+  // Forward pending incoming calls
+  for (const [cid, call] of Object.entries(activeCalls)) {
     if (call.calleeUsername === username && call.status === 'ringing') {
-      ws.send(JSON.stringify({
-        type: 'incoming_call', callId: cid,
-        callerName: call.callerName, callerUsername: call.callerUsername
-      }));
+      ws.send(JSON.stringify({ type: 'incoming_call', callId: cid, callerName: call.callerName, callerUsername: call.callerUsername }));
     }
   }
 
-  ws.on('message', (data) => {
-    try {
-      const msg = JSON.parse(data);
-      handleMessage(ws, msg, username, name);
-    } catch (e) { console.error('Bad message:', e.message); }
+  // Notify friends that user is online
+  const friends = await getFriends(username);
+  for (const f of friends) sendTo(f.username, { type: 'friend_online', username, name: u.name });
+
+  ws.on('message', async (data) => {
+    try { await handleMessage(ws, JSON.parse(data), username, u.name); }
+    catch(e) { console.error('WS msg error:', e.message); }
   });
 
-  ws.on('close', () => {
-    if (users[username]) { users[username].ws = null; users[username].online = false; }
+  ws.on('close', async () => {
+    delete onlineUsers[username];
     console.log(`${name} (@${username}) disconnected`);
-    addLog(username, 'ws_closed', {});
+    const friends2 = await getFriends(username).catch(()=>[]);
+    for (const f of friends2) sendTo(f.username, { type: 'friend_offline', username });
   });
 });
 
-function handleMessage(ws, msg, username, name) {
-  switch (msg.type) {
+async function handleMessage(ws, msg, username, name) {
+  switch(msg.type) {
 
     case 'call': {
-      const calleeKey = (msg.calleeUsername || '').toLowerCase();
-      const callee = users[calleeKey];
-      if (!callee) { ws.send(JSON.stringify({ type: 'error', message: 'User not found' })); return; }
-
+      const calleeKey = (msg.calleeUsername||'').toLowerCase();
+      const callee = await getUserRow(calleeKey);
+      if (!callee) { ws.send(JSON.stringify({ type:'error', message:'User not found' })); return; }
       // Busy check
-      if (isInCall(calleeKey)) {
-        ws.send(JSON.stringify({ type: 'call_busy', calleeUsername: calleeKey }));
-        addLog(username, 'call_busy', { callee: calleeKey });
-        return;
-      }
-
-      const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      calls[callId] = {
-        callId, callerUsername: username, calleeUsername: calleeKey,
-        callerName: name, status: 'ringing', audioStats: {}
-      };
-      addLog(username, 'call_created_server', {
-        callId, callee: calleeKey,
-        calleeOnline: isOnline(callee)
-      });
-      ws.send(JSON.stringify({ type: 'call_created', callId }));
-      if (isOnline(callee)) {
-        callee.ws.send(JSON.stringify({
-          type: 'incoming_call', callId,
-          callerName: name, callerUsername: username
-        }));
-      }
+      const busy = Object.values(activeCalls).some(c =>
+        (c.callerUsername===calleeKey || c.calleeUsername===calleeKey) && c.status==='connected'
+      );
+      if (busy) { ws.send(JSON.stringify({ type:'call_busy', username: calleeKey })); return; }
+      const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2,6)}`;
+      activeCalls[callId] = { callId, callerUsername: username, calleeUsername: calleeKey, callerName: name, status:'ringing' };
+      ws.send(JSON.stringify({ type:'call_created', callId }));
+      sendTo(calleeKey, { type:'incoming_call', callId, callerName: name, callerUsername: username });
       break;
     }
 
     case 'accept_call': {
-      const call = calls[msg.callId];
+      const call = activeCalls[msg.callId];
       if (!call) return;
       call.status = 'connected';
-      addLog(username, 'call_accepted_server', { callId: msg.callId, caller: call.callerUsername, callee: call.calleeUsername });
-      const caller = users[call.callerUsername];
-      if (caller && caller.ws) caller.ws.send(JSON.stringify({ type: 'call_accepted', callId: msg.callId }));
+      sendTo(call.callerUsername, { type:'call_accepted', callId: msg.callId });
       break;
     }
 
     case 'reject_call': {
-      const call = calls[msg.callId];
+      const call = activeCalls[msg.callId];
       if (!call) return;
       call.status = 'rejected';
-      const caller = users[call.callerUsername];
-      if (caller && caller.ws) caller.ws.send(JSON.stringify({ type: 'call_rejected', callId: msg.callId }));
+      sendTo(call.callerUsername, { type:'call_rejected', callId: msg.callId });
+      delete activeCalls[msg.callId];
       break;
     }
 
     case 'end_call': {
-      const call = calls[msg.callId];
+      const call = activeCalls[msg.callId];
       if (!call) return;
       call.status = 'ended';
-      const otherKey = call.callerUsername === username ? call.calleeUsername : call.callerUsername;
-      const other = users[otherKey];
-      if (other && other.ws) other.ws.send(JSON.stringify({ type: 'call_ended', callId: msg.callId }));
-      delete calls[msg.callId];
+      const otherKey = call.callerUsername===username ? call.calleeUsername : call.callerUsername;
+      sendTo(otherKey, { type:'call_ended', callId: msg.callId });
+      delete activeCalls[msg.callId];
       break;
     }
 
     case 'audio': {
-      const call = calls[msg.callId];
+      const call = activeCalls[msg.callId];
       if (!call) return;
-      const otherKey = call.callerUsername === username ? call.calleeUsername : call.callerUsername;
-      const other = users[otherKey];
-      call.audioStats[username] = (call.audioStats[username] || 0) + 1;
-      const n = call.audioStats[username];
-      if (n <= 5 || n % 25 === 0) {
-        addLog(username, 'audio_relay_server', {
-          callId: msg.callId, chunk: n,
-          bytes: msg.data ? Math.floor(msg.data.length * 3 / 4) : 0,
-          sampleRate: msg.sampleRate || 16000,
-          to: otherKey, receiverOnline: isOnline(other)
-        });
-      }
-      if (isOnline(other)) {
-        other.ws.send(JSON.stringify({
-          type: 'audio', callId: msg.callId,
-          data: msg.data, sampleRate: msg.sampleRate || 16000
-        }));
-      }
+      const otherKey = call.callerUsername===username ? call.calleeUsername : call.callerUsername;
+      sendTo(otherKey, { type:'audio', callId: msg.callId, data: msg.data, sampleRate: msg.sampleRate });
       break;
     }
 
     case 'chat': {
-      const toKey = (msg.to || '').toLowerCase();
-      if (!users[toKey]) { ws.send(JSON.stringify({ type: 'error', message: 'User not found' })); return; }
-      const newMsg = addMsg(username, toKey, msg.text);
-      ws.send(JSON.stringify({ type: 'chat_sent', to: toKey, text: msg.text, ts: newMsg.ts }));
-      const recipient = users[toKey];
-      if (isOnline(recipient)) {
-        recipient.ws.send(JSON.stringify({
-          type: 'chat', from: username, text: msg.text, ts: newMsg.ts,
-          voiceData: msg.voiceData, voiceMime: msg.voiceMime
-        }));
+      const toKey = (msg.to||'').toLowerCase();
+      const ts = Date.now();
+      // Save to Turso
+      await db.execute({
+        sql: 'INSERT INTO messages (from_user, to_target, is_group, text, voice_data, voice_mime, ts) VALUES (?,?,0,?,?,?,?)',
+        args: [username, toKey, msg.text||null, msg.voiceData||null, msg.voiceMime||null, ts]
+      });
+      ws.send(JSON.stringify({ type:'chat_sent', to: toKey, text: msg.text, ts }));
+      sendTo(toKey, { type:'chat', from: username, text: msg.text, voiceData: msg.voiceData||null, voiceMime: msg.voiceMime||null, ts });
+      pruneMessages().catch(()=>{});
+      break;
+    }
+
+    case 'group_chat': {
+      const groupId = msg.groupId;
+      const ts = Date.now();
+      await db.execute({
+        sql: 'INSERT INTO messages (from_user, to_target, is_group, text, voice_data, voice_mime, ts) VALUES (?,?,1,?,?,?,?)',
+        args: [username, groupId, msg.text||null, msg.voiceData||null, msg.voiceMime||null, ts]
+      });
+      const members = await getGroupMembers(groupId);
+      for (const m of members) {
+        if (m.username !== username) {
+          sendTo(m.username, { type:'group_chat', groupId, from: username, fromName: name, text: msg.text, voiceData: msg.voiceData||null, voiceMime: msg.voiceMime||null, ts });
+        }
       }
+      ws.send(JSON.stringify({ type:'group_chat_sent', groupId, ts }));
       break;
     }
 
     case 'add_friend': {
-      // WS-based friend request
-      const toKey = (msg.toUsername || '').toLowerCase();
-      const toUser = users[toKey];
-      if (!toUser) { ws.send(JSON.stringify({ type: 'error', message: 'User not found' })); return; }
-      const fromUser = users[username];
-      if (username === toKey) return;
-      if (fromUser.friends.includes(toKey)) { ws.send(JSON.stringify({ type: 'error', message: 'Already friends' })); return; }
-      if (toUser.pendingIn.includes(username)) { ws.send(JSON.stringify({ type: 'error', message: 'Request already sent' })); return; }
-      toUser.pendingIn.push(username);
-      fromUser.pendingOut.push(toKey);
-      ws.send(JSON.stringify({ type: 'friend_request_sent', to: toKey }));
-      if (isOnline(toUser)) {
-        toUser.ws.send(JSON.stringify({ type: 'friend_request', from: username, fromName: name }));
-      }
-      addLog(username, 'add_friend_ws', { to: toKey });
+      const toKey = (msg.toUsername||'').toLowerCase();
+      const toUser = await getUserRow(toKey);
+      if (!toUser) { ws.send(JSON.stringify({ type:'error', message:'User not found' })); return; }
+      const existing = await db.execute({
+        sql: 'SELECT * FROM friends WHERE (user1=? AND user2=?) OR (user1=? AND user2=?)',
+        args: [username, toKey, toKey, username]
+      });
+      if (existing.rows.length) { ws.send(JSON.stringify({ type:'error', message:'Already friends or pending' })); return; }
+      await db.execute({ sql: 'INSERT INTO friends (user1,user2,status) VALUES (?,?,?)', args: [username, toKey, 'pending'] });
+      sendTo(toKey, { type:'friend_request', from: username, fromName: name });
+      ws.send(JSON.stringify({ type:'friend_request_sent', to: toKey }));
       break;
     }
 
     case 'accept_friend': {
-      // WS-based accept: msg.fromUsername is who sent the request
-      const fromKey = (msg.fromUsername || '').toLowerCase();
-      const fromUser = users[fromKey];
-      const toUser = users[username]; // acceptor
-      if (!fromUser || !toUser) return;
-      const idx = toUser.pendingIn.indexOf(fromKey);
-      if (idx === -1) return;
-      toUser.pendingIn.splice(idx, 1);
-      const outIdx = fromUser.pendingOut.indexOf(username);
-      if (outIdx !== -1) fromUser.pendingOut.splice(outIdx, 1);
-      if (!toUser.friends.includes(fromKey)) toUser.friends.push(fromKey);
-      if (!fromUser.friends.includes(username)) fromUser.friends.push(username);
-      ws.send(JSON.stringify({ type: 'friend_accepted', with: fromKey, withName: fromUser.name }));
-      if (isOnline(fromUser)) {
-        fromUser.ws.send(JSON.stringify({ type: 'friend_accepted', with: username, withName: name }));
+      const fromKey = (msg.fromUsername||'').toLowerCase();
+      await db.execute({ sql: `UPDATE friends SET status='accepted' WHERE user1=? AND user2=? AND status='pending'`, args: [fromKey, username] });
+      sendTo(fromKey, { type:'friend_accepted', by: username, byName: name });
+      ws.send(JSON.stringify({ type:'friend_accepted', by: fromKey }));
+      break;
+    }
+
+    case 'paging': {
+      // Group voice broadcast — admin only
+      const { groupId, audioData, audioMime } = msg;
+      const adminCheck = await db.execute({ sql: 'SELECT role FROM group_members WHERE group_id=? AND username=?', args: [groupId, username] });
+      if (!adminCheck.rows.length || adminCheck.rows[0].role !== 'admin') { ws.send(JSON.stringify({ type:'error', message:'Only admins can broadcast' })); return; }
+      const members = await getGroupMembers(groupId);
+      for (const m of members) {
+        if (m.username !== username) sendTo(m.username, { type:'paging', from: username, fromName: name, audioData, audioMime, groupId });
       }
-      addLog(username, 'accept_friend_ws', { from: fromKey });
+      break;
+    }
+
+    case 'sos_ws': {
+      const { lat, lng, groupId } = msg;
+      const sosId = `sos_${Date.now()}`;
+      await db.execute({ sql: 'INSERT INTO sos_alerts (id,username,lat,lng,group_id) VALUES (?,?,?,?,?)', args: [sosId, username, lat||null, lng||null, groupId||null] });
+      const mapsLink = lat ? `https://maps.google.com/?q=${lat},${lng}` : null;
+      const alert = { type:'sos_alert', sosId, from: username, name, lat, lng, mapsLink, ts: Date.now() };
+      if (groupId) {
+        const members = await getGroupMembers(groupId);
+        for (const m of members) { if (m.username !== username) sendTo(m.username, alert); }
+      } else {
+        const friends = await getFriends(username);
+        for (const f of friends) sendTo(f.username, alert);
+      }
+      ws.send(JSON.stringify({ type:'sos_sent', sosId }));
+      break;
+    }
+
+    case 'sos_cancel': {
+      const { sosId } = msg;
+      await db.execute({ sql: 'UPDATE sos_alerts SET cancelled=1 WHERE id=?', args: [sosId] });
+      const cancel = { type:'sos_cancelled', sosId, from: username, name };
+      const friends = await getFriends(username);
+      for (const f of friends) sendTo(f.username, cancel);
       break;
     }
   }
 }
 
-app.get('/call/:callId', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/call/:callId', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-server.listen(PORT, () => {
-  console.log(`FamilyCall server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`FamilyCall server running on port ${PORT}`));

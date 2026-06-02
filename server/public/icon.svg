@@ -1,7 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="80" fill="#1A237E"/>
-  <path d="M256 140c-48 0-94 12-134 34v60c0 8-5 15-12 19-20 10-39 23-55 38-4 4-9 6-14 6s-11-2-15-6l-26-26c-4-4-6-8-6-13s2-10 6-13c54-48 127-77 208-77s154 29 208 77c4 4 6 9 6 13s-2 10-6 13l-26 26c-4 4-9 6-15 6s-10-2-14-6c-16-15-35-28-55-38-7-4-12-11-12-19v-60c-40-22-86-34-134-34z" fill="white" opacity="0.9"/>
-  <path d="M256 220c-32 0-64 8-92 24v40c0 6-3 11-8 14-14 7-27 16-38 26-3 3-6 4-10 4s-7-1-10-4l-18-18c-3-3-4-6-4-9s1-7 4-9c38-34 88-54 144-54s106 20 144 54c3 3 4 6 4 9s-1 7-4 9l-18 18c-3 3-6 4-10 4s-7-1-10-4c-11-10-24-19-38-26-5-3-8-8-8-14v-40c-28-16-60-24-92-24z" fill="#43A047"/>
-  <circle cx="256" cy="320" r="36" fill="white"/>
-  <path d="M244 308h24v24h-24zM248 304h16v40h-16z" fill="#1A237E"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90D9"/>
+      <stop offset="100%" style="stop-color:#2C6FAC"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="96" cy="96" r="96" fill="url(#bg)"/>
+  <!-- White soft circle -->
+  <circle cx="96" cy="96" r="80" fill="rgba(255,255,255,0.1)"/>
+  <!-- House shape (family home) -->
+  <polygon points="96,40 148,80 148,145 44,145 44,80" fill="white" opacity="0.95"/>
+  <!-- Roof -->
+  <polygon points="96,30 158,82 34,82" fill="#FFB347"/>
+  <!-- Door -->
+  <rect x="82" y="108" width="28" height="37" rx="14" fill="#4A90D9"/>
+  <!-- Window left -->
+  <rect x="54" y="95" width="20" height="20" rx="4" fill="#E8F4FF"/>
+  <line x1="64" y1="95" x2="64" y2="115" stroke="#4A90D9" stroke-width="1.5"/>
+  <line x1="54" y1="105" x2="74" y2="105" stroke="#4A90D9" stroke-width="1.5"/>
+  <!-- Window right -->
+  <rect x="120" y="95" width="20" height="20" rx="4" fill="#E8F4FF"/>
+  <line x1="130" y1="95" x2="130" y2="115" stroke="#4A90D9" stroke-width="1.5"/>
+  <line x1="120" y1="105" x2="140" y2="105" stroke="#4A90D9" stroke-width="1.5"/>
+  <!-- Phone icon on door -->
+  <text x="96" y="134" text-anchor="middle" font-size="16" fill="white">📞</text>
+  <!-- Small hearts -->
+  <text x="30" y="55" font-size="18" fill="#FF6B6B" opacity="0.8">♥</text>
+  <text x="152" y="55" font-size="18" fill="#FF6B6B" opacity="0.8">♥</text>
+  <!-- App name -->
+  <text x="96" y="172" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="white" opacity="0.9">FamilyCall</text>
 </svg>
