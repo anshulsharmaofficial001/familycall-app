@@ -28,6 +28,82 @@ let locationPaused = false;
 let activeSosId = null;
 let currentGroupId = null; // for group chat
 
+const $ = id => document.getElementById(id);
+function onClick(id, fn) {
+  const el = $(id);
+  if (!el) { console.warn('[FamilyCall] missing #' + id); return false; }
+  el.onclick = fn;
+  return true;
+}
+function bindEl(id, prop, fn) {
+  const el = $(id);
+  if (!el) return false;
+  el[prop] = fn;
+  return true;
+}
+
+function doLogin() {
+  const u = ($('loginUser') && $('loginUser').value || '').trim().toLowerCase();
+  const p = $('loginPass') && $('loginPass').value || '';
+  if (!u || !p) return alert('Enter username and password');
+  const btn = $('loginBtn');
+  if (btn) { btn.textContent = 'Signing in…'; btn.disabled = true; }
+  myUsername = u;
+  slog('login_click', { username: u });
+  fetch(`${HTTP_URL}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: u, password: p })
+  })
+    .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.error || 'Login failed'); }))
+    .then(r => {
+      slog('login_success', { username: r.user.username });
+      localStorage.setItem('fc_user', r.user.username);
+      localStorage.setItem('fc_name', r.user.name);
+      localStorage.setItem('fc_role', r.user.role || 'user');
+      connectApp(r.user.username, r.user.name, r.user.role || 'user');
+    })
+    .catch(e => {
+      slog('login_failed', { username: u, err: e.message });
+      if (btn) { btn.textContent = 'Sign In'; btn.disabled = false; }
+      alert(e.message || 'Login failed');
+    });
+}
+
+function doRegister() {
+  const u = ($('regUser') && $('regUser').value || '').trim().toLowerCase();
+  const n = ($('regName') && $('regName').value || '').trim();
+  const p = $('regPass') && $('regPass').value || '';
+  if (!u || !n || !p) return alert('Fill all fields');
+  if (u.includes(' ')) return alert('No spaces in username');
+  const btn = $('regBtn');
+  if (btn) { btn.textContent = 'Creating…'; btn.disabled = true; }
+  myUsername = u;
+  slog('register_click', { username: u, name: n });
+  fetch(`${HTTP_URL}/api/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: u, name: n, password: p })
+  })
+    .then(r => r.ok ? r.json() : r.json().then(e => { throw new Error(e.error || 'Registration failed'); }))
+    .then(() => {
+      slog('register_success', { username: u });
+      localStorage.setItem('fc_user', u);
+      localStorage.setItem('fc_name', n);
+      localStorage.setItem('fc_role', 'user');
+      connectApp(u, n, 'user');
+    })
+    .catch(e => {
+      slog('register_failed', { username: u, err: e.message });
+      if (btn) { btn.textContent = 'Create Account'; btn.disabled = false; }
+      alert(e.message || 'Registration failed');
+    });
+}
+
+window.doLogin = doLogin;
+window.doRegister = doRegister;
+window.connectApp = connectApp;
+
 /* ── Avatar helper ── */
 function setAvatarEl(el, name, avatarB64, isCreator) {
   if (!el) return;
@@ -59,12 +135,16 @@ function updateTopbar() {
   } else {
     av.className = 'topbar-avatar';
   }
+  const titleEl = $('topbarName');
+  if (titleEl) titleEl.textContent = myName || 'Family';
   const statusLine = $('userStatusLine');
   if (statusLine) {
+    const online = ws && ws.readyState === WebSocket.OPEN;
+    const dot = online ? '<span style="color:var(--green);font-weight:700">● Online</span>' : '<span style="color:var(--text2)">○ Offline</span>';
     if (myRole === 'superadmin') {
-      statusLine.innerHTML = `<span id="myName">${myName}</span> <span style="color:var(--gold);font-family:Pacifico,cursive;font-size:11px;animation:creator-glow 2s infinite">✦ Creator</span>`;
+      statusLine.innerHTML = `${dot} · <span style="color:var(--gold);font-family:Pacifico,cursive;font-size:11px;animation:creator-glow 2s infinite">✦ Creator</span>`;
     } else {
-      statusLine.innerHTML = `<span id="myName">${myName}</span> · @<span id="myUser">${myUsername}</span>`;
+      statusLine.innerHTML = `${dot} · @${myUsername}`;
     }
   }
 }
@@ -95,54 +175,14 @@ window.addEventListener('error', e => slog('window_error', { message:e.message, 
 window.addEventListener('unhandledrejection', e => slog('promise_rejection', { reason:String(e.reason && (e.reason.message || e.reason)) }));
 
 /* ═══════════════════════════════════════════
-   AUTH
+   AUTH (logout — login/register via inline handler in index.html)
 ═══════════════════════════════════════════ */
-$('showRegister').onclick = e => { e.preventDefault(); $('loginPage').classList.add('hide'); $('registerPage').classList.remove('hide'); };
-$('showLogin').onclick    = e => { e.preventDefault(); $('registerPage').classList.add('hide'); $('loginPage').classList.remove('hide'); };
-
-$('loginBtn').onclick = () => {
-  const u=$('loginUser').value.trim().toLowerCase(), p=$('loginPass').value;
-  if (!u||!p) return alert('Enter username and password');
-  $('loginBtn').textContent='Signing in…'; $('loginBtn').disabled=true;
-  myUsername=u;
-  slog('login_click',{username:u});
-  fetch(`${HTTP_URL}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
-    .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Login failed');}))
-    .then(r=>{
-      slog('login_success',{username:r.user.username});
-      localStorage.setItem('fc_user',r.user.username);
-      localStorage.setItem('fc_name',r.user.name);
-      localStorage.setItem('fc_role',r.user.role||'user');
-      connectApp(r.user.username,r.user.name,r.user.role||'user');
-    })
-    .catch(e=>{slog('login_failed',{username:u,err:e.message});$('loginBtn').textContent='Sign In';$('loginBtn').disabled=false;alert(e.message);});
-};
-
-$('regBtn').onclick = () => {
-  const u=$('regUser').value.trim().toLowerCase(),n=$('regName').value.trim(),p=$('regPass').value;
-  if (!u||!n||!p) return alert('Fill all fields');
-  if (u.includes(' ')) return alert('No spaces in username');
-  $('regBtn').textContent='Creating…'; $('regBtn').disabled=true;
-  myUsername=u;
-  slog('register_click',{username:u,name:n});
-  fetch(`${HTTP_URL}/api/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,name:n,password:p})})
-    .then(r=>r.ok?r.json():r.json().then(e=>{throw new Error(e.error||'Registration failed');}))
-    .then(r=>{
-      slog('register_success',{username:u});
-      localStorage.setItem('fc_user',u);
-      localStorage.setItem('fc_name',n);
-      localStorage.setItem('fc_role',r.user&&r.user.role?r.user.role:'user');
-      connectApp(u,n,'user');
-    })
-    .catch(e=>{slog('register_failed',{username:u,err:e.message});$('regBtn').textContent='Create Account';$('regBtn').disabled=false;alert(e.message);});
-};
-
-$('logoutBtn').onclick = () => {
+onClick('logoutBtn', () => {
   localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); localStorage.removeItem('fc_role');
   if (ws) ws.close();
   $('mainPage').classList.add('hide'); $('loginPage').classList.remove('hide');
   $('loginUser').value=''; $('loginPass').value='';
-};
+});
 
 /* ═══════════════════════════════════════════
    WEBSOCKET
@@ -164,7 +204,8 @@ function connectApp(username, name, role) {
     loadGroups();
   }).catch(()=>{ updateTopbar(); });
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
-  ws.onopen=()=>{slog('ws_open',{});loadContacts();refreshInterval=setInterval(loadContacts,8000);};
+  ws.onopen=()=>{slog('ws_open',{});updateTopbar();loadContacts();refreshInterval=setInterval(loadContacts,8000);};
+  initSOSButton();
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
   ws.onclose=()=>{slog('ws_close',{});if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
 }
@@ -295,20 +336,6 @@ function handleMsg(msg) {
 
 function send(obj){if(ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));}
 
-function showToast(msg) {
-  let t = document.getElementById('toastMsg');
-  if (!t) {
-    t = document.createElement('div');
-    t.id = 'toastMsg';
-    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid #00f5ff;color:#00f5ff;padding:10px 18px;font-size:12px;letter-spacing:1px;z-index:9999;border-radius:2px;pointer-events:none;transition:opacity .3s';
-    document.body.appendChild(t);
-  }
-  t.textContent = msg;
-  t.style.opacity = '1';
-  clearTimeout(t._to);
-  t._to = setTimeout(() => { t.style.opacity = '0'; }, 3000);
-}
-
 function showFriendRequestToast(fromName) {
   showToast('👤 Friend request from ' + fromName);
 }
@@ -368,7 +395,7 @@ async function startCapture(){
   captureGain.gain.value=0;
   if(captureCtx.audioWorklet){
     try{
-      await captureCtx.audioWorklet.addModule('/js/pcm-recorder.js?v=1');
+      await captureCtx.audioWorklet.addModule('/js/pcm-recorder.js?v=3');
       captureNode=new AudioWorkletNode(captureCtx,'pcm-recorder',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1]});
       captureNode.port.onmessage=e=>{
         if(!currentCallId||isMuted||isOnHold||!e.data||e.data.type!=='pcm')return;
@@ -451,7 +478,9 @@ function unlockAudioOutput() {
 
 async function ensurePlayCtx(){
   if(!playCtx||playCtx.state==='closed'){
-    playCtx=new(window.AudioContext||window.webkitAudioContext)({sampleRate:SAMPLE_RATE});
+    // Do NOT force sampleRate — let browser use its native rate (44100/48000)
+    // Forcing 16000 causes silent failure on many Android/iOS devices
+    playCtx=new(window.AudioContext||window.webkitAudioContext)();
     playNextTime=0; playNode=null;
     playGain=playCtx.createGain();
     playGain.gain.value=2.0;
@@ -465,7 +494,7 @@ async function ensurePlayCtx(){
   }
   if(!playNode && playCtx.audioWorklet){
     try{
-      await playCtx.audioWorklet.addModule('/js/audio-processor.js?v=2');
+      await playCtx.audioWorklet.addModule('/js/audio-processor.js?v=4');
       playNode=new AudioWorkletNode(playCtx,'pcm-player',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1]});
       playNode.connect(playGain);
       playMode='worklet';
@@ -475,11 +504,31 @@ async function ensurePlayCtx(){
   unlockAudioOutput();
 }
 
+/* Build a proper WAV blob from PCM16 data — works on ALL browsers/mobile */
+function pcm16ToWavBlob(int16Array, sampleRate) {
+  const numSamples = int16Array.length;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, str) => { for(let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); };
+  writeStr(0,'RIFF'); view.setUint32(4, 36+numSamples*2, true);
+  writeStr(8,'WAVE'); writeStr(12,'fmt ');
+  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+  view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
+  view.setUint16(32,2,true); view.setUint16(34,16,true);
+  writeStr(36,'data'); view.setUint32(40,numSamples*2,true);
+  const pcmOut = new Int16Array(buffer, 44);
+  pcmOut.set(int16Array);
+  return new Blob([buffer], {type:'audio/wav'});
+}
+
 async function receiveAudio(b64, sourceRate){
   rxAudioChunks++;
-  if(rxAudioChunks<=5||rxAudioChunks%25===0)slog('rx_audio_chunk',{chunk:rxAudioChunks,b64Length:b64.length,sourceRate,playState:playCtx?playCtx.state:'none',visibility:document.visibilityState});
+  const sr = Number(sourceRate) || SAMPLE_RATE;
+  if(rxAudioChunks<=5||rxAudioChunks%25===0)slog('rx_audio_chunk',{chunk:rxAudioChunks,b64Length:b64.length,sourceRate:sr,playState:playCtx?playCtx.state:'none',visibility:document.visibilityState});
   await ensurePlayCtx();
   if(!playCtx||playCtx.state==='closed'){slog('rx_drop_no_playctx',{chunk:rxAudioChunks});return;}
+
+  /* Decode base64 → Int16Array */
   let pcm;
   try{
     const bin=atob(b64);
@@ -488,30 +537,52 @@ async function receiveAudio(b64, sourceRate){
     for(let i=0;i<bin.length;i++)view[i]=bin.charCodeAt(i);
     pcm=new Int16Array(buf);
   }catch(e){slog('rx_b64_fail',{err:e.message});return;}
+
+  /* Convert to Float32 */
   const f32=new Float32Array(pcm.length);
   for(let i=0;i<pcm.length;i++)f32[i]=pcm[i]/(pcm[i]<0?0x8000:0x7FFF);
+
+  /* Try AudioWorklet (best path) */
   if(playNode){
     try{
-      const out = resampleFloat32(f32, sourceRate, playCtx.sampleRate);
+      const out = resampleFloat32(f32, sr, playCtx.sampleRate);
       playNode.port.postMessage({type:'chunk', samples: out}, [out.buffer]);
       playedAudioChunks++;
-      if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_queued',{chunk:playedAudioChunks,samples:out.length,sourceRate,ctxRate:playCtx.sampleRate,state:playCtx.state,mode:playMode});
+      if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_queued',{chunk:playedAudioChunks,samples:out.length,sourceRate:sr,ctxRate:playCtx.sampleRate,state:playCtx.state,mode:playMode});
       return;
     }catch(e){ slog('play_worklet_queue_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state}); }
   }
+
+  /* Try AudioBuffer scheduled playback */
   try{
-    const ab=playCtx.createBuffer(1,f32.length,Number(sourceRate)||SAMPLE_RATE);
-    ab.copyToChannel(f32,0);
+    // Use playCtx.sampleRate (native) NOT hardcoded SAMPLE_RATE
+    const out = resampleFloat32(f32, sr, playCtx.sampleRate);
+    const ab=playCtx.createBuffer(1, out.length, playCtx.sampleRate);
+    ab.copyToChannel(out, 0);
     const src=playCtx.createBufferSource();
     src.buffer=ab;
     src.connect(playGain || playCtx.destination);
     const now=playCtx.currentTime;
-    if(playNextTime<now+0.01)playNextTime=now+0.05;
+    if(playNextTime<now+0.02)playNextTime=now+0.05;
     src.start(playNextTime);
     playNextTime+=ab.duration;
     playedAudioChunks++;
-    if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_scheduled',{chunk:playedAudioChunks,duration:ab.duration,state:playCtx.state});
-  }catch(e){ slog('play_audio_failed',{err:e.message,chunk:rxAudioChunks,state:playCtx.state}); }
+    if(playedAudioChunks<=5||playedAudioChunks%25===0)slog('play_audio_scheduled',{chunk:playedAudioChunks,duration:ab.duration,ctxRate:playCtx.sampleRate,state:playCtx.state});
+    return;
+  }catch(e){ slog('play_buffer_failed',{err:e.message,chunk:rxAudioChunks}); }
+
+  /* Ultimate fallback: WAV blob + <audio> element — guaranteed on ALL mobile browsers */
+  try{
+    const wav = pcm16ToWavBlob(pcm, sr);
+    const url = URL.createObjectURL(wav);
+    const audio = new Audio(url);
+    audio.volume = 1.0;
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.onerror = (e) => { slog('wav_audio_err',{chunk:rxAudioChunks}); URL.revokeObjectURL(url); };
+    await audio.play();
+    playedAudioChunks++;
+    slog('play_wav_fallback',{chunk:playedAudioChunks,sourceRate:sr});
+  }catch(e){ slog('play_all_failed',{err:e.message,chunk:rxAudioChunks}); }
 }
 
 function cleanupPlayback(){
@@ -545,12 +616,12 @@ async function startCall(username, name){
   startCallTimer();
 }
 
-$('callEndBtn').onclick=()=>{
+onClick('callEndBtn', ()=>{
   if(currentCallId)send({type:'end_call',callId:currentCallId});
   endCallUI();
-};
+});
 
-$('acceptBtn').onclick=async()=>{
+onClick('acceptBtn', async()=>{
   if(!currentCallId||!ws)return;
   stopRing();
   callChatTarget = '';
@@ -570,34 +641,32 @@ $('acceptBtn').onclick=async()=>{
   isOnHold=false;
   slog('callee_accept_capture_start',{callId:currentCallId});
   startCapture();
-};
+});
 
-$('declineBtn').onclick=()=>{
+onClick('declineBtn', ()=>{
   stopRing();
   if(currentCallId)send({type:'reject_call',callId:currentCallId});
   currentCallId=null;
   $('incomingPage').classList.add('hide');
   $('mainPage').classList.remove('hide');
-};
+});
 
-$('muteBtn').onclick=function(){
+onClick('muteBtn', function(){
   isMuted=!isMuted;
   this.querySelector('.ctrl-btn-circle').textContent=isMuted?'🔇':'🎙️';
   this.querySelector('span').textContent=isMuted?'Unmute':'Mute';
   this.classList.toggle('active',isMuted);
-};
+});
 
-// Hold button
-$('holdBtn').onclick=function(){
+onClick('holdBtn', function(){
   isOnHold=!isOnHold;
   this.querySelector('.ctrl-btn-circle').textContent=isOnHold?'▶':'⏸';
   this.querySelector('span').textContent=isOnHold?'Resume':'Hold';
   this.classList.toggle('active',isOnHold);
   $('callStatusText').textContent=isOnHold?'On Hold':'Connected';
-};
+});
 
-// Speaker button — route audio to speaker via setSinkId if available
-$('speakerBtn').onclick=function(){
+onClick('speakerBtn', function(){
   speakerActive=!speakerActive;
   this.querySelector('.ctrl-btn-circle').textContent=speakerActive?'📢':'🔊';
   this.querySelector('span').textContent=speakerActive?'Speaker On':'Speaker';
@@ -612,13 +681,12 @@ $('speakerBtn').onclick=function(){
     });
   }
   slog('speaker_toggle', { active: speakerActive });
-};
+});
 
-// Message button on call screen — opens mini chat overlay
-$('callMsgBtn').onclick=function(){
+onClick('callMsgBtn', function(){
   const overlay = $('callChatOverlay');
   if(overlay){ overlay.classList.toggle('hide'); if(!overlay.classList.contains('hide')&&callChatTarget){ const t=$('callChatTarget'); if(t)t.textContent=$('callDisplayName').textContent; const m=$('callChatMessages'); if(m)m.innerHTML=''; } }
-};
+});
 
 const callChatClose=$('callChatClose'); if(callChatClose) callChatClose.onclick=function(){ $('callChatOverlay').classList.add('hide'); };
 
@@ -791,31 +859,43 @@ function acceptFriend(fromUsername) {
   }).catch(()=>alert('Error accepting request'));
 }
 
-// Search bar wiring
-$('searchUser').oninput = function() {
-  const q = this.value.trim();
-  if (q.length >= 1) searchUsers(q);
-  else loadContacts();
-};
-$('callUserBtn').onclick=()=>{
-  const u=$('searchUser').value.trim().toLowerCase();
-  if(u) searchUsers(u);
-};
-$('searchUser').onkeydown=e=>{ if(e.key==='Enter') $('callUserBtn').click(); };
-
-/* ═══════════════════════════════════════════
-   TABS
-═══════════════════════════════════════════ */
-$('tabContacts').onclick=function(){
-  $('tabContacts').classList.add('active');$('tabChat').classList.remove('active');
-  $('contactsView').classList.remove('hide');$('chatView').classList.add('hide');
-  loadContacts();
-};
-$('tabChat').onclick=function(){
-  $('tabChat').classList.add('active');$('tabContacts').classList.remove('active');
-  $('contactsView').classList.add('hide');$('chatView').classList.remove('hide');
-  loadChatContacts();
-};
+function initMainUI() {
+  bindEl('searchUser', 'oninput', function() {
+    const q = this.value.trim();
+    if (q.length >= 1) searchUsers(q);
+    else loadContacts();
+  });
+  onClick('callUserBtn', () => {
+    const su = $('searchUser');
+    const u = su ? su.value.trim().toLowerCase() : '';
+    if (u) searchUsers(u);
+  });
+  bindEl('searchUser', 'onkeydown', e => { if (e.key === 'Enter') { const b = $('callUserBtn'); if (b) b.click(); } });
+  onClick('tabContacts', function() {
+    $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active');
+    $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide');
+    loadContacts();
+  });
+  onClick('tabChat', function() {
+    $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active');
+    $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide');
+    loadChatContacts();
+  });
+  onClick('chatSendBtn', () => {
+    const t = ($('chatInput') && $('chatInput').value || '').trim();
+    if (!t) return;
+    if (currentGroupId) {
+      send({ type: 'group_chat', groupId: currentGroupId, text: t });
+      appendGroupMsg(myName, t, true);
+    } else if (chatTarget) {
+      send({ type: 'chat', to: chatTarget, text: t });
+      appendChatMsg(myUsername, t, true);
+    }
+    if ($('chatInput')) $('chatInput').value = '';
+  });
+  bindEl('chatInput', 'onkeydown', e => { if (e.key === 'Enter') { const b = $('chatSendBtn'); if (b) b.click(); } });
+  initVoiceNoteBtn();
+}
 
 /* ═══════════════════════════════════════════
    CHAT
@@ -861,20 +941,6 @@ function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
 function closeChatArea(){$('chatAreaView').classList.add('hide');$('chatListView').classList.remove('hide');chatTarget='';currentGroupId=null;}
 
-$('chatSendBtn').onclick=()=>{
-  const t=$('chatInput').value.trim();
-  if(!t) return;
-  if(currentGroupId){
-    send({type:'group_chat', groupId:currentGroupId, text:t});
-    appendGroupMsg(myName, t, true);
-  } else if(chatTarget){
-    send({type:'chat',to:chatTarget,text:t});
-    appendChatMsg(myUsername,t,true);
-  }
-  $('chatInput').value='';
-};
-$('chatInput').onkeydown=e=>{if(e.key==='Enter')$('chatSendBtn').click();};
-
 function appendChatMsg(from,text,mine,voiceData,voiceMime){
   if(!mine&&chatTarget!==from)return;
   if(voiceData){appendVoiceMsg(from,voiceData,voiceMime,mine);return;}
@@ -890,7 +956,8 @@ function appendChatMsg(from,text,mine,voiceData,voiceMime){
 ═══════════════════════════════════════════ */
 let vnRecorder=null, vnStream=null, vnChunks=[], vnRecording=false;
 
-$('voiceNoteBtn').onclick=async function(){
+function initVoiceNoteBtn() {
+  onClick('voiceNoteBtn', async function() {
   if(!chatTarget)return;
   if(!vnRecording){
     try{
@@ -924,7 +991,8 @@ $('voiceNoteBtn').onclick=async function(){
     this.classList.remove('recording');
     if(vnRecorder&&vnRecorder.state!=='inactive')vnRecorder.stop();
   }
-};
+  });
+}
 
 function appendVoiceMsg(from,b64,mime,mine){
   if(!mine&&chatTarget!==from)return;
@@ -988,6 +1056,7 @@ function saveProfile(){
 
 // Handle avatar file input — no size limit
 document.addEventListener('DOMContentLoaded', ()=>{
+  initMainUI();
   const fileInput = $('avatarFileInput');
   if(fileInput) {
     fileInput.onchange = function(){

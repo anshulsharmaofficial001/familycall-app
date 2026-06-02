@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#4A90D9">
 <meta name="mobile-web-app-capable" content="yes">
 <title>FamilyCall</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Pacifico&display=swap" rel="stylesheet">
 <style>
@@ -197,7 +198,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     <h2>Welcome back! 👋</h2>
     <div class="field"><label>Username</label><input id="loginUser" placeholder="your_username" maxlength="30" autocomplete="off"></div>
     <div class="field"><label>Password</label><input id="loginPass" type="password" placeholder="••••••••" maxlength="30"></div>
-    <button class="main-btn" id="loginBtn">Sign In</button>
+    <button type="button" class="main-btn" id="loginBtn">Sign In</button>
     <p class="auth-link">New here? <a href="#" id="showRegister">Create Account</a></p>
   </div>
 </div>
@@ -214,7 +215,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     <div class="field"><label>Username</label><input id="regUser" placeholder="choose_username" maxlength="30" autocomplete="off"></div>
     <div class="field"><label>Your Name</label><input id="regName" placeholder="e.g. Rahul / Maa / Didi" maxlength="50"></div>
     <div class="field"><label>Password</label><input id="regPass" type="password" placeholder="••••••••" maxlength="30"></div>
-    <button class="main-btn" id="regBtn">Create Account</button>
+    <button type="button" class="main-btn" id="regBtn">Create Account</button>
     <p class="auth-link">Already have account? <a href="#" id="showLogin">Sign In</a></p>
   </div>
 </div>
@@ -225,7 +226,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     <div class="topbar-left">
       <div class="topbar-avatar" id="topbarAvatar" onclick="openProfileModal()"></div>
       <div class="topbar-info">
-        <div class="app-name">FamilyCall</div>
+        <div class="app-name" id="topbarName">FamilyCall</div>
         <div class="user-status" id="userStatusLine">Loading...</div>
       </div>
     </div>
@@ -312,6 +313,17 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
       </button>
     </div>
     <button class="end-call-btn" id="callEndBtn">📵</button>
+  </div>
+  <div id="callChatOverlay" class="hide" style="position:absolute;bottom:150px;left:12px;right:12px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.25);z-index:110;max-height:240px;display:flex;flex-direction:column;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #EDF2F7;font-size:14px;font-weight:700;color:var(--primary)">
+      <span id="callChatTarget">Chat</span>
+      <button type="button" id="callChatClose" style="border:none;background:#F0F4FF;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div id="callChatMessages" style="flex:1;overflow-y:auto;padding:10px 12px;background:#F8FAFF;min-height:72px;display:flex;flex-direction:column;gap:6px"></div>
+    <div style="display:flex;gap:8px;padding:8px 10px;border-top:1px solid #EDF2F7">
+      <input id="callChatInput" placeholder="Type a message…" maxlength="500" style="flex:1;border:2px solid #EDF2F7;border-radius:20px;padding:8px 14px;font-size:14px;font-family:Nunito,sans-serif;outline:none">
+      <button type="button" id="callChatSendBtn" style="background:var(--primary);color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:16px;cursor:pointer">➤</button>
+    </div>
   </div>
 </div>
 
@@ -425,5 +437,80 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 .feat-btn:active{background:#D6E4FF}
 </style>
 
-<script src="/js/app.js?v=fc8"></script>
+<script>
+(function () {
+  function go(id, hideId) {
+    var a = document.getElementById(id);
+    var b = document.getElementById(hideId);
+    if (a) a.classList.remove('hide');
+    if (b) b.classList.add('hide');
+  }
+  function loginFallback() {
+    var u = (document.getElementById('loginUser').value || '').trim().toLowerCase();
+    var p = document.getElementById('loginPass').value || '';
+    if (!u || !p) { alert('Enter username and password'); return; }
+    var btn = document.getElementById('loginBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
+    fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p })
+    }).then(function (r) {
+      return r.ok ? r.json() : r.json().then(function (e) { throw new Error(e.error || 'Login failed'); });
+    }).then(function (r) {
+      localStorage.setItem('fc_user', r.user.username);
+      localStorage.setItem('fc_name', r.user.name);
+      localStorage.setItem('fc_role', r.user.role || 'user');
+      if (window.connectApp) window.connectApp(r.user.username, r.user.name, r.user.role || 'user');
+      else location.reload();
+    }).catch(function (e) {
+      alert(e.message || 'Login failed');
+      if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
+    });
+  }
+  function registerFallback() {
+    var u = (document.getElementById('regUser').value || '').trim().toLowerCase();
+    var n = (document.getElementById('regName').value || '').trim();
+    var p = document.getElementById('regPass').value || '';
+    if (!u || !n || !p) { alert('Fill all fields'); return; }
+    if (u.indexOf(' ') >= 0) { alert('No spaces in username'); return; }
+    var btn = document.getElementById('regBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+    fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: u, name: n, password: p })
+    }).then(function (r) {
+      return r.ok ? r.json() : r.json().then(function (e) { throw new Error(e.error || 'Registration failed'); });
+    }).then(function () {
+      localStorage.setItem('fc_user', u);
+      localStorage.setItem('fc_name', n);
+      localStorage.setItem('fc_role', 'user');
+      if (window.connectApp) window.connectApp(u, n, 'user');
+      else location.reload();
+    }).catch(function (e) {
+      alert(e.message || 'Registration failed');
+      if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('#showRegister')) { e.preventDefault(); go('registerPage', 'loginPage'); return; }
+    if (t.closest('#showLogin')) { e.preventDefault(); go('loginPage', 'registerPage'); return; }
+    if (t.closest('#loginBtn')) {
+      e.preventDefault();
+      if (window.doLogin) window.doLogin();
+      else loginFallback();
+      return;
+    }
+    if (t.closest('#regBtn')) {
+      e.preventDefault();
+      if (window.doRegister) window.doRegister();
+      else registerFallback();
+    }
+  });
+})();
+</script>
+<script src="/js/app.js?v=fc12"></script>
 </body></html>
