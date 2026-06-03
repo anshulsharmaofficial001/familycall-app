@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#4A90D9">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>FamilyCall</title>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Pacifico&display=swap" rel="stylesheet">
 <style>
@@ -533,5 +536,92 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   });
 })();
 </script>
-<script src="/js/app.js?v=fc15"></script>
+<script src="/js/app.js?v=fc16"></script>
+
+<!-- UPDATE BANNER -->
+<div id="updateBanner" style="
+  display:none;
+  position:fixed;
+  bottom:0;left:0;right:0;
+  background:linear-gradient(135deg,#4A90D9,#2C6FAC);
+  color:#fff;
+  padding:14px 20px;
+  z-index:99999;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  box-shadow:0 -4px 20px rgba(74,144,217,0.4);
+  animation:slideUp .4s ease;
+  font-family:'Nunito',sans-serif;
+">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:22px">🔄</span>
+    <div>
+      <div style="font-weight:800;font-size:14px">New Update Available!</div>
+      <div style="font-size:11px;opacity:.85">Tap to install latest version</div>
+    </div>
+  </div>
+  <button id="updateNowBtn" style="
+    background:#fff;
+    color:#2C6FAC;
+    border:none;
+    border-radius:20px;
+    padding:10px 20px;
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+    font-family:'Nunito',sans-serif;
+    white-space:nowrap;
+    box-shadow:0 2px 8px rgba(0,0,0,0.15);
+  ">Update Now ✨</button>
+  <button onclick="document.getElementById('updateBanner').style.display='none'" style="
+    background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px;opacity:.8
+  ">✕</button>
+</div>
+
+<style>
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity:0; }
+  to   { transform: translateY(0);    opacity:1; }
+}
+</style>
+
+<script>
+// ── Service Worker Registration + Update Detection ──
+if ('serviceWorker' in navigator) {
+  let newWorker;
+
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    // Check for updates every 60 seconds
+    setInterval(() => reg.update(), 60000);
+
+    reg.addEventListener('updatefound', () => {
+      newWorker = reg.installing;
+      newWorker.addEventListener('statechange', () => {
+        // New SW installed & waiting — show banner
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          showUpdateBanner(newWorker);
+        }
+      });
+    });
+  }).catch(() => {});
+
+  // Reload after new SW takes control
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
+
+  function showUpdateBanner(worker) {
+    const banner = document.getElementById('updateBanner');
+    const btn    = document.getElementById('updateNowBtn');
+    if (!banner || !btn) return;
+    banner.style.display = 'flex';
+    btn.onclick = () => {
+      btn.textContent = 'Installing... ⏳';
+      btn.disabled = true;
+      worker.postMessage('SKIP_WAITING');
+    };
+  }
+}
+</script>
 </body></html>
