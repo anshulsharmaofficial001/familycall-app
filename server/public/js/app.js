@@ -939,22 +939,118 @@ function loadChatContacts(){
   });
 }
 
-function openChat(username,name){
-  chatTarget=username;
-  const friend = friendsCache.find(f=>f.username===username);
-  const displayName = name || (friend&&friend.name) || username;
-  $('chatWith').textContent = '💬 ' + displayName;
-  $('chatListView').classList.add('hide');$('chatAreaView').classList.remove('hide');
-  fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(data=>{
-    $('chatMessages').innerHTML=(data[username]||[]).map(m=>`<div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">${escHtml(m.text)}</div>`).join('');
-    $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+/* ─ Update chat header for 1-to-1 chat ─ */
+function setChatHeader(username, name, avatar, online, isGroup) {
+  // Avatar
+  const av = document.getElementById('chatHeaderAvatar');
+  if (av) {
+    if (avatar) {
+      av.innerHTML = `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    } else if (isGroup) {
+      av.innerHTML = '👨‍👩‍👧‍👦';
+      av.style.background = 'linear-gradient(135deg,#FF9800,#F44336)';
+      av.style.fontSize = '20px';
+    } else {
+      av.textContent = (name||'?').charAt(0).toUpperCase();
+      av.style.background = 'linear-gradient(135deg,var(--primary),var(--primary-dark))';
+      av.style.fontSize = '18px';
+    }
+  }
+  // Name
+  const cw = document.getElementById('chatWith');
+  if (cw) cw.textContent = name || username;
+  // Sub status
+  const sub = document.getElementById('chatHeaderSub');
+  if (sub) {
+    if (isGroup) sub.textContent = 'Family Group';
+    else sub.textContent = online ? '● Online' : '○ Offline';
+    sub.style.color = (!isGroup && online) ? 'var(--green)' : 'var(--text2)';
+  }
+  // Buttons — group shows broadcast, 1-to-1 shows call
+  const callBtn = document.getElementById('chatCallBtn');
+  const broadcastBtn = document.getElementById('chatBroadcastBtn');
+  if (callBtn) callBtn.style.display = isGroup ? 'none' : 'flex';
+  if (broadcastBtn) broadcastBtn.style.display = isGroup ? 'flex' : 'none';
+}
+
+function openChat(username, name) {
+  chatTarget = username;
+  currentGroupId = null;
+  const friend = friendsCache.find(f => f.username === username);
+  const displayName = name || (friend && friend.name) || username;
+  const avatar = friend ? friend.avatar : null;
+  const online = friend ? friend.online : false;
+
+  setChatHeader(username, displayName, avatar, online, false);
+
+  // Switch to chat view
+  const chatView = document.getElementById('chatView');
+  const contactsView = document.getElementById('contactsView');
+  if (chatView) chatView.classList.remove('hide');
+  if (contactsView) contactsView.classList.add('hide');
+  // Make sure tab state correct
+  const tabChat = document.getElementById('tabChat');
+  const tabContacts = document.getElementById('tabContacts');
+  if (tabChat) tabChat.classList.add('active');
+  if (tabContacts) tabContacts.classList.remove('active');
+
+  document.getElementById('chatListView').classList.add('hide');
+  document.getElementById('chatAreaView').classList.remove('hide');
+
+  fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r => r.json()).then(data => {
+    const msgs = data[username] || [];
+    document.getElementById('chatMessages').innerHTML = msgs.map(m => {
+      const time = m.ts ? new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+      return `<div class="chat-msg ${m.from === myUsername ? 'chat-mine' : 'chat-other'}">
+        ${escHtml(m.text)}
+        ${time ? `<span style="font-size:9px;opacity:.5;margin-left:6px;display:inline-block">${time}</span>` : ''}
+      </div>`;
+    }).join('');
+    document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
   });
-  $('chatInput').focus();
+  const inp = document.getElementById('chatInput');
+  if (inp) inp.focus();
+}
+
+function closeChatArea() {
+  document.getElementById('chatAreaView').classList.add('hide');
+  document.getElementById('chatListView').classList.remove('hide');
+  chatTarget = ''; currentGroupId = null;
 }
 
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* ─ Chat header action buttons ─ */
+function chatHeaderCall() {
+  if (!chatTarget) return;
+  const friend = friendsCache.find(f => f.username === chatTarget);
+  startCall(chatTarget, friend ? friend.name : chatTarget);
+}
 
-function closeChatArea(){$('chatAreaView').classList.add('hide');$('chatListView').classList.remove('hide');chatTarget='';currentGroupId=null;}
+function chatHeaderSOS() {
+  // Send SOS — works from both 1-to-1 and group chat
+  const name = document.getElementById('chatWith') ? document.getElementById('chatWith').textContent : '';
+  if (!confirm(`🆘 Send SOS alert to ${name || 'family'}?\n\nThis will alert everyone with your location.`)) return;
+  triggerSOS();
+}
+
+function chatHeaderBroadcast() {
+  if (!currentGroupId) return;
+  sendPaging(currentGroupId);
+}
+
+function openChatProfile() {
+  // Tapping header name/avatar shows mini profile info
+  if (currentGroupId) return; // group — no profile
+  if (!chatTarget) return;
+  const friend = friendsCache.find(f => f.username === chatTarget);
+  if (!friend) return;
+  const batInfo = batteryCache[chatTarget];
+  const batText = batInfo ? `\nBattery: ${Math.round(batInfo.level*100)}%${batInfo.charging?' ⚡':''}` : '';
+  const onlineText = friend.online ? '✅ Online now' : '⭕ Offline';
+  alert(`👤 ${friend.name}\n@${friend.username}\n${onlineText}${batText}`);
+}
+
+
 
 function appendChatMsg(from,text,mine,voiceData,voiceMime){
   if(!mine&&chatTarget!==from)return;
@@ -1354,14 +1450,15 @@ async function playVoiceStatus(username) {
     const r = await fetch(`${HTTP_URL}/api/voice-status/${username}`).then(res=>res.json());
     if (!r.hasStatus) { showToast('No status available'); return; }
     const audio = new Audio(r.audioData);
-    audio.play().catch(()=>{});
-  } catch(e) {}
+} catch(e) {}
 }
 
 function showVoiceStatusRing(username, avatar, name) {
   const el = document.querySelector(`.contact-avatar[data-vsuser="${username}"]`);
   if (el) el.style.outline = '3px solid #FF9800';
 }
+
+
 
 /* ── Voice Broadcast (Paging) ── */
 async function sendPaging(groupId) {
