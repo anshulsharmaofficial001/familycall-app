@@ -30,6 +30,10 @@ let locationPaused = false;
 let activeSosId = null;
 let currentGroupId = null; // for group chat
 
+/* ── Splash ── */
+let _splashHidden = false;
+window.splashStartTime = Date.now();
+
 const $ = id => document.getElementById(id);
 function onClick(id, fn) {
   const el = $(id);
@@ -2528,8 +2532,7 @@ function clearVoicePreview() {
   if (vnBtn) vnBtn.classList.remove('hide');
 }
 
-window.splashStartTime = Date.now();
-let _splashHidden = false;
+// _splashHidden and splashStartTime are declared at the top of this file
 
 function hideSplashScreen() {
   if (_splashHidden) return;
