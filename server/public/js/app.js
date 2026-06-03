@@ -930,6 +930,17 @@ function initMainUI() {
     loadChatContacts();
   });
   onClick('chatSendBtn', () => {
+    if (pendingVoiceB64 && pendingVoiceMime) {
+      if (currentGroupId) {
+        send({ type: 'group_chat', groupId: currentGroupId, text: '🎤 [Voice Note]', voiceData: pendingVoiceB64, voiceMime: pendingVoiceMime });
+        appendGroupMsg(myName, '🎤 [Voice Note]', true, pendingVoiceB64, pendingVoiceMime);
+      } else if (chatTarget) {
+        send({ type: 'chat', to: chatTarget, text: '🎤 [Voice Note]', voiceData: pendingVoiceB64, voiceMime: pendingVoiceMime });
+        appendChatMsg(myUsername, '🎤 [Voice Note]', true, pendingVoiceB64, pendingVoiceMime);
+      }
+      clearVoicePreview();
+      return;
+    }
     const t = ($('chatInput') && $('chatInput').value || '').trim();
     if (!t) return;
     if (currentGroupId) {
@@ -1032,13 +1043,7 @@ function openChat(username, name) {
 
   fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r => r.json()).then(data => {
     const msgs = data[username] || [];
-    document.getElementById('chatMessages').innerHTML = msgs.map(m => {
-      const time = m.ts ? new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
-      return `<div class="chat-msg ${m.from === myUsername ? 'chat-mine' : 'chat-other'}">
-        ${escHtml(m.text)}
-        ${time ? `<span style="font-size:9px;opacity:.5;margin-left:6px;display:inline-block">${time}</span>` : ''}
-      </div>`;
-    }).join('');
+    document.getElementById('chatMessages').innerHTML = msgs.map(m => renderMsgHtml(m, false)).join('');
     document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
   });
   const inp = document.getElementById('chatInput');
@@ -1083,74 +1088,114 @@ function openChatProfile() {
   alert(`👤 ${friend.name}\n@${friend.username}\n${onlineText}${batText}`);
 }
 
+let pendingVoiceB64 = null;
+let pendingVoiceMime = null;
+let statusTimeout = null;
+let statusAudioElement = null;
 
+function renderMsgHtml(m, isGroup) {
+  const time = m.ts ? new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+  const mine = m.from === myUsername;
+  
+  let contentHtml = '';
+  if (m.voiceData && m.voiceMime) {
+    if (m.voiceMime.startsWith('audio/')) {
+      contentHtml = `<audio controls src="data:${m.voiceMime};base64,${m.voiceData}" style="max-width:100%;height:36px;border-radius:20px;display:block"></audio>`;
+    } else if (m.voiceMime.startsWith('image/')) {
+      contentHtml = `<div class="chat-media-img" style="margin-top:4px"><img src="data:${m.voiceMime};base64,${m.voiceData}" style="max-width:200px;max-height:200px;border-radius:12px;cursor:pointer;object-fit:cover" onclick="viewFullScreenImage(this.src)"></div>`;
+    } else if (m.voiceMime.startsWith('video/')) {
+      contentHtml = `<div class="chat-media-vid" style="margin-top:4px"><video controls src="data:${m.voiceMime};base64,${m.voiceData}" style="max-width:200px;max-height:200px;border-radius:12px;display:block"></video></div>`;
+    } else if (m.voiceMime === 'location') {
+      let coords = { lat: 0, lng: 0 };
+      try { coords = JSON.parse(m.voiceData); } catch(e) {
+        const pts = String(m.voiceData).split(',');
+        if (pts.length === 2) coords = { lat: parseFloat(pts[0]), lng: parseFloat(pts[1]) };
+      }
+      const mineColor = 'rgba(255,255,255,0.2)';
+      const otherColor = '#D0E0FF';
+      contentHtml = `<div class="chat-location-card" style="margin-top:4px;background:${mine?'rgba(255,255,255,0.15)':'#F0F4FF'};padding:10px;border-radius:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border:1px solid ${mine?mineColor:otherColor}" onclick="window.open('https://www.google.com/maps?q=${coords.lat},${coords.lng}', '_blank')"><span style="font-size:24px">📍</span><div style="text-align:left"><div style="font-weight:bold;font-size:13px;color:${mine?'#fff':'var(--primary)'}">Live Location</div><div style="font-size:11px;opacity:0.8">Tap to view Google Maps</div></div></div>`;
+    } else if (m.voiceMime === 'contact') {
+      const mineColor = 'rgba(255,255,255,0.2)';
+      const otherColor = '#D0E0FF';
+      contentHtml = `<div class="chat-contact-card" style="margin-top:4px;background:${mine?'rgba(255,255,255,0.15)':'#F0F4FF'};padding:10px;border-radius:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border:1px solid ${mine?mineColor:otherColor}" onclick="openChat('${m.voiceData}','')"><span style="font-size:24px">👤</span><div style="text-align:left"><div style="font-weight:bold;font-size:13px;color:${mine?'#fff':'var(--primary)'}">${escHtml(m.text || 'Contact')}</div><div style="font-size:11px;opacity:0.8">Tap to message</div></div></div>`;
+    } else {
+      const mineColor = 'rgba(255,255,255,0.2)';
+      const otherColor = '#EDF2F7';
+      contentHtml = `<div class="chat-doc-card" style="margin-top:4px;background:${mine?'rgba(255,255,255,0.15)':'#F7F9FC'};padding:10px;border-radius:12px;display:flex;align-items:center;gap:10px;cursor:pointer;border:1px solid ${mine?mineColor:otherColor}" onclick="downloadBase64File('${m.voiceData}', '${m.voiceMime}', '${escHtml(m.text || 'File')}')"><span style="font-size:24px">📄</span><div style="text-align:left;overflow:hidden;max-width:150px"><div style="font-weight:bold;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${mine?'#fff':'var(--text)'}">${escHtml(m.text || 'Document')}</div><div style="font-size:11px;opacity:0.8">Tap to download</div></div></div>`;
+    }
+  } else {
+    contentHtml = escHtml(m.text);
+  }
+
+  const showSender = isGroup && !mine;
+  return `<div class="chat-msg ${mine ? 'chat-mine' : 'chat-other'}">
+    ${showSender ? `<div style="font-size:10px;margin-bottom:4px;opacity:.7;font-weight:800">${m.from}</div>` : ''}
+    <div style="display:inline-block">${contentHtml}</div>
+    ${time ? `<span style="font-size:9px;opacity:.5;margin-left:6px;display:inline-block">${time}</span>` : ''}
+  </div>`;
+}
 
 function appendChatMsg(from,text,mine,voiceData,voiceMime){
   if(!mine&&chatTarget!==from)return;
-  if(voiceData){appendVoiceMsg(from,voiceData,voiceMime,mine);return;}
-  const div=document.createElement('div');
-  div.className='chat-msg '+(mine?'chat-mine':'chat-other');
-  div.textContent=text;
-  $('chatMessages').appendChild(div);
-  $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
+  const chatMessages = document.getElementById('chatMessages');
+  if(!chatMessages) return;
+  const m = { from, text, voiceData, voiceMime, ts: Date.now() };
+  const html = renderMsgHtml(m, false);
+  const temp = document.createElement('div');
+  temp.innerHTML = html.trim();
+  const div = temp.firstChild;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-/* ═══════════════════════════════════════════
-   VOICE NOTE
-═══════════════════════════════════════════ */
 let vnRecorder=null, vnStream=null, vnChunks=[], vnRecording=false;
 
 function initVoiceNoteBtn() {
   onClick('voiceNoteBtn', async function() {
-  if(!chatTarget)return;
-  if(!vnRecording){
-    try{
-      vnStream=await navigator.mediaDevices.getUserMedia({audio:true});
-      vnChunks=[];
-      const mime=typeof MediaRecorder!=='undefined'&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';
-      vnRecorder=new MediaRecorder(vnStream,{mimeType:mime});
-      vnRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)vnChunks.push(e.data);};
-      vnRecorder.onstop=async()=>{
-        const blob=new Blob(vnChunks,{type:vnRecorder.mimeType});
-        const reader=new FileReader();
-        reader.onloadend=()=>{
-          const b64=reader.result.split(',')[1];
-          if(b64&&chatTarget){
-            send({type:'chat',to:chatTarget,text:'🎤 [Voice Note]',voiceData:b64,voiceMime:vnRecorder.mimeType});
-            appendVoiceMsg(myUsername,b64,vnRecorder.mimeType,true);
-          }
+    if(!chatTarget && !currentGroupId) return;
+    if(!vnRecording){
+      try{
+        vnStream=await navigator.mediaDevices.getUserMedia({audio:true});
+        vnChunks=[];
+        const mime=typeof MediaRecorder!=='undefined'&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';
+        vnRecorder=new MediaRecorder(vnStream,{mimeType:mime});
+        vnRecorder.ondataavailable=e=>{if(e.data&&e.data.size>0)vnChunks.push(e.data);};
+        vnRecorder.onstop=async()=>{
+          const blob=new Blob(vnChunks,{type:vnRecorder.mimeType});
+          const reader=new FileReader();
+          reader.onloadend=()=>{
+            const b64=reader.result.split(',')[1];
+            if(b64 && (chatTarget || currentGroupId)){
+              pendingVoiceB64 = b64;
+              pendingVoiceMime = vnRecorder.mimeType;
+              const previewArea = $('voicePreviewArea');
+              const previewPlayer = $('voicePreviewPlayer');
+              const chatInp = $('chatInput');
+              const attachBtn = $('chatAttachBtn');
+              const vnBtn = $('voiceNoteBtn');
+              if (previewPlayer) previewPlayer.src = 'data:' + vnRecorder.mimeType + ';base64,' + b64;
+              if (previewArea) previewArea.classList.remove('hide');
+              if (chatInp) chatInp.classList.add('hide');
+              if (attachBtn) attachBtn.classList.add('hide');
+              if (vnBtn) vnBtn.classList.add('hide');
+            }
+          };
+          reader.readAsDataURL(blob);
+          if(vnStream)vnStream.getTracks().forEach(t=>t.stop());
+          vnStream=null;
         };
-        reader.readAsDataURL(blob);
-        if(vnStream)vnStream.getTracks().forEach(t=>t.stop());
-        vnStream=null;
-      };
-      vnRecorder.start();
-      vnRecording=true;
-      this.textContent='⏹';
-      this.classList.add('recording');
-    }catch(e){alert('Mic denied: '+e.message);}
-  } else {
-    vnRecording=false;
-    this.textContent='🎤';
-    this.classList.remove('recording');
-    if(vnRecorder&&vnRecorder.state!=='inactive')vnRecorder.stop();
-  }
+        vnRecorder.start();
+        vnRecording=true;
+        this.textContent='⏹';
+        this.classList.add('recording');
+      }catch(e){alert('Mic denied: '+e.message);}
+    } else {
+      vnRecording=false;
+      this.textContent='🎤';
+      this.classList.remove('recording');
+      if(vnRecorder&&vnRecorder.state!=='inactive')vnRecorder.stop();
+    }
   });
-}
-
-function appendVoiceMsg(from,b64,mime,mine){
-  if(!mine&&chatTarget!==from)return;
-  const div=document.createElement('div');
-  div.className='chat-msg '+(mine?'chat-mine':'chat-other');
-  const blob=new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:mime});
-  const url=URL.createObjectURL(blob);
-  const audio=document.createElement('audio');
-  audio.controls=true;
-  audio.src=url;
-  audio.style.cssText='width:200px;height:36px;border-radius:20px';
-  div.appendChild(audio);
-  $('chatMessages').appendChild(div);
-  $('chatMessages').scrollTop=$('chatMessages').scrollHeight;
 }
 
 /* ═══════════════════════════════════════════
@@ -1342,6 +1387,17 @@ function updateBatteryDot(username, level, charging) {
 function updateContactOnlineStatus(username, online) {
   const dots = document.querySelectorAll(`.status-dot[data-user="${username}"]`);
   dots.forEach(d => { d.className = `status-dot ${online?'dot-on':'dot-off'}`; d.dataset.user = username; });
+  
+  const friend = friendsCache.find(f => f.username === username);
+  if (friend) friend.online = online;
+
+  if (chatTarget === username) {
+    const sub = document.getElementById('chatHeaderSub');
+    if (sub && !currentGroupId) {
+      sub.textContent = online ? '● Online' : '○ Offline';
+      sub.style.color = online ? 'var(--green)' : 'var(--text2)';
+    }
+  }
 }
 
 /* ── Location Tracking ── */
@@ -1522,8 +1578,67 @@ async function playVoiceStatus(username) {
   try {
     const r = await fetch(`${HTTP_URL}/api/voice-status/${username}`).then(res=>res.json());
     if (!r.hasStatus) { showToast('No status available'); return; }
-    const audio = new Audio(r.audioData);
-} catch(e) {}
+    
+    const viewer = document.getElementById('statusViewer');
+    const container = document.getElementById('statusContentContainer');
+    const nameEl = document.getElementById('statusUserName');
+    const timeEl = document.getElementById('statusTime');
+    const avatarEl = document.getElementById('statusUserAvatar');
+    
+    if (!viewer || !container) return;
+    
+    closeStatusViewer();
+    
+    viewer.classList.remove('hide');
+    
+    const friend = friendsCache.find(f => f.username === username) || { name: username };
+    nameEl.textContent = friend.name || username;
+    avatarEl.textContent = (friend.name || username).charAt(0).toUpperCase();
+    timeEl.textContent = 'Status';
+    
+    container.innerHTML = '';
+    let duration = 5000;
+    const mime = r.audioMime || '';
+    
+    if (mime.startsWith('audio/')) {
+      container.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:20px;color:#fff">
+          <div style="font-size:64px;animation:pulse-gold 1.5s infinite">🎙️</div>
+          <div style="font-size:18px;font-weight:bold">Listening to Voice Status...</div>
+        </div>
+      `;
+      statusAudioElement = new Audio(r.audioData);
+      statusAudioElement.play();
+      statusAudioElement.onloadedmetadata = () => {
+        duration = (statusAudioElement.duration || 5) * 1000;
+        startProgressBar(duration);
+      };
+      statusAudioElement.onended = () => closeStatusViewer();
+    } else if (mime.startsWith('image/')) {
+      container.innerHTML = `<img src="${r.audioData}" style="max-width:100%;max-height:85vh;object-fit:contain;border-radius:12px">`;
+      startProgressBar(duration);
+      statusTimeout = setTimeout(closeStatusViewer, duration);
+    } else if (mime.startsWith('video/')) {
+      container.innerHTML = `<video id="statusVideo" autoplay src="${r.audioData}" style="max-width:100%;max-height:85vh;object-fit:contain;border-radius:12px"></video>`;
+      const vid = document.getElementById('statusVideo');
+      vid.onloadedmetadata = () => {
+        duration = (vid.duration || 5) * 1000;
+        startProgressBar(duration);
+      };
+      vid.onended = () => closeStatusViewer();
+    } else {
+      container.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+      container.innerHTML = `
+        <div style="font-size:24px;font-weight:800;color:#fff;text-align:center;max-width:85%;word-break:break-word;line-height:1.6">
+          "${escHtml(r.audioData)}"
+        </div>
+      `;
+      startProgressBar(duration);
+      statusTimeout = setTimeout(closeStatusViewer, duration);
+    }
+  } catch(e) {
+    showToast('Error playing status: ' + e.message);
+  }
 }
 
 function showVoiceStatusRing(username, avatar, name) {
@@ -1602,11 +1717,7 @@ function openGroupChat(groupId, groupName) {
   fetch(`${HTTP_URL}/api/group-messages/${groupId}`).then(r=>r.json()).then(msgs => {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
-    chatMessages.innerHTML = msgs.map(m => `
-      <div class="chat-msg ${m.from===myUsername?'chat-mine':'chat-other'}">
-        ${m.from!==myUsername?`<div style="font-size:10px;margin-bottom:4px;opacity:.7">${m.from}</div>`:''}
-        ${m.text||'🎤 Voice'}
-      </div>`).join('');
+    chatMessages.innerHTML = msgs.map(m => renderMsgHtml(m, true)).join('');
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }).catch(()=>{});
 }
@@ -1614,17 +1725,11 @@ function openGroupChat(groupId, groupName) {
 function appendGroupMsg(fromName, text, mine, voiceData, voiceMime) {
   const chatMessages = document.getElementById('chatMessages');
   if (!chatMessages) return;
-  const div = document.createElement('div');
-  div.className = 'chat-msg ' + (mine ? 'chat-mine' : 'chat-other');
-  if (!mine) div.innerHTML = `<div style="font-size:10px;margin-bottom:4px;opacity:.7">${fromName}</div>`;
-  if (voiceData) {
-    const audio = document.createElement('audio');
-    audio.controls = true; audio.src = voiceData;
-    audio.style.cssText = 'width:200px;height:36px';
-    div.appendChild(audio);
-  } else {
-    div.appendChild(document.createTextNode(text||''));
-  }
+  const m = { from: fromName, text, voiceData, voiceMime, ts: Date.now() };
+  const html = renderMsgHtml(m, true);
+  const temp = document.createElement('div');
+  temp.innerHTML = html.trim();
+  const div = temp.firstChild;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -1843,6 +1948,256 @@ async function adminDeleteUser(username, name, btnEl) {
     alert('Error deleting user');
     btnEl.textContent = '🗑️ Delete';
     btnEl.disabled = false;
+  }
+}
+
+
+
+/* ── Media Sharing & Attachment Dropup ── */
+function toggleAttachMenu(event) {
+  event.stopPropagation();
+  const menu = $('attachMenu');
+  if (menu) menu.classList.toggle('hide');
+}
+
+// Close attachment menu when clicking anywhere else
+document.addEventListener('click', function(e) {
+  const menu = $('attachMenu');
+  if (menu && !menu.classList.contains('hide')) {
+    menu.classList.add('hide');
+  }
+});
+
+function triggerFileInput(acceptTypes) {
+  const inp = $('chatFileInput');
+  if (inp) {
+    inp.accept = acceptTypes;
+    inp.value = '';
+    inp.click();
+  }
+}
+
+function handleFileSelected(input) {
+  if (!input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  
+  if (file.size > 10 * 1024 * 1024) {
+    alert('File too large. Maximum size allowed is 10MB.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onloadend = function() {
+    const base64 = reader.result.split(',')[1];
+    if (base64) {
+      if (currentGroupId) {
+        send({ type: 'group_chat', groupId: currentGroupId, text: file.name, voiceData: base64, voiceMime: file.type });
+        appendGroupMsg(myName, file.name, true, base64, file.type);
+      } else if (chatTarget) {
+        send({ type: 'chat', to: chatTarget, text: file.name, voiceData: base64, voiceMime: file.type });
+        appendChatMsg(myUsername, file.name, true, base64, file.type);
+      }
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ── Contact Sharing (Username ID) ── */
+function shareContactClicked() {
+  const modal = $('contactSelectModal');
+  const container = $('contactSelectContainer');
+  if (!modal || !container) return;
+
+  container.innerHTML = '';
+  if (friendsCache.length === 0) {
+    container.innerHTML = '<p style="text-align:center;font-size:12px;color:var(--text2)">No contacts to share</p>';
+  } else {
+    container.innerHTML = friendsCache.map(f => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#F0F4FF;border-radius:12px;cursor:pointer" onclick="sendContactCard('${f.username}','${f.name.replace(/'/g, "\\'")}')">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:bold">${f.name.charAt(0)}</div>
+        <div style="text-align:left"><div style="font-weight:700;font-size:13px;color:var(--text)">${f.name}</div><div style="font-size:11px;color:var(--text2)">@${f.username}</div></div>
+      </div>
+    `).join('');
+  }
+  modal.classList.remove('hide');
+}
+
+function closeContactSelectModal() {
+  const modal = $('contactSelectModal');
+  if (modal) modal.classList.add('hide');
+}
+
+function sendContactCard(username, name) {
+  closeContactSelectModal();
+  if (currentGroupId) {
+    send({ type: 'group_chat', groupId: currentGroupId, text: name, voiceData: username, voiceMime: 'contact' });
+    appendGroupMsg(myName, name, true, username, 'contact');
+  } else if (chatTarget) {
+    send({ type: 'chat', to: chatTarget, text: name, voiceData: username, voiceMime: 'contact' });
+    appendChatMsg(myUsername, name, true, username, 'contact');
+  }
+}
+
+/* ── Location Sharing ── */
+function shareCurrentLocation() {
+  if (!navigator.geolocation) {
+    showToast('❌ Geolocation is not supported by your browser');
+    return;
+  }
+  showToast('⏳ Fetching live location...');
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const coordsStr = JSON.stringify({ lat, lng });
+    
+    if (currentGroupId) {
+      send({ type: 'group_chat', groupId: currentGroupId, text: '📍 Live Location', voiceData: coordsStr, voiceMime: 'location' });
+      appendGroupMsg(myName, '📍 Live Location', true, coordsStr, 'location');
+    } else if (chatTarget) {
+      send({ type: 'chat', to: chatTarget, text: '📍 Live Location', voiceData: coordsStr, voiceMime: 'location' });
+      appendChatMsg(myUsername, '📍 Live Location', true, coordsStr, 'location');
+    }
+    showToast('✅ Location shared!');
+  }, function(err) {
+    showToast('❌ Location access denied: ' + err.message);
+  }, { enableHighAccuracy: true });
+}
+
+/* ── Document Download helper ── */
+function downloadBase64File(b64, mime, filename) {
+  try {
+    const sliceSize = 512;
+    const byteCharacters = atob(b64);
+    const byteArrays = [];
+    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+      const slice = byteCharacters.slice(offset, offset + sliceSize);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      byteArrays.push(byteArray);
+    }
+    const blob = new Blob(byteArrays, {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Download failed: ' + e.message);
+  }
+}
+
+/* ── Image Fullscreen preview ── */
+function viewFullScreenImage(src) {
+  const modal = document.getElementById('imagePreviewModal');
+  const img = document.getElementById('imagePreviewModalImg');
+  if (modal && img) {
+    img.src = src;
+    modal.classList.remove('hide');
+  }
+}
+
+/* ── Voice preview reset ── */
+function clearVoicePreview() {
+  pendingVoiceB64 = null;
+  pendingVoiceMime = null;
+  const previewArea = $('voicePreviewArea');
+  const previewPlayer = $('voicePreviewPlayer');
+  const chatInp = $('chatInput');
+  const attachBtn = $('chatAttachBtn');
+  const vnBtn = $('voiceNoteBtn');
+  if (previewPlayer) previewPlayer.src = '';
+  if (previewArea) previewArea.classList.add('hide');
+  if (chatInp) {
+    chatInp.classList.remove('hide');
+    chatInp.focus();
+  }
+  if (attachBtn) attachBtn.classList.remove('hide');
+  if (vnBtn) vnBtn.classList.remove('hide');
+}
+
+/* ── Status Media & Text Updates ── */
+function triggerStatusFileInput() {
+  const inp = $('statusFileInput');
+  if (inp) {
+    inp.value = '';
+    inp.click();
+  }
+}
+
+function handleStatusFileSelected(input) {
+  if (!input.files || input.files.length === 0) return;
+  const file = input.files[0];
+  if (file.size > 10 * 1024 * 1024) {
+    alert('File too large. Status media limit is 10MB.');
+    return;
+  }
+  showToast('⏳ Uploading status media...');
+  const reader = new FileReader();
+  reader.onloadend = function() {
+    const dataUrl = reader.result;
+    fetch(`${HTTP_URL}/api/voice-status`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username: myUsername, audioData: dataUrl, audioMime: file.type })
+    }).then(res => res.json()).then(data => {
+      if (data.success) {
+        showToast('✅ Status posted successfully!');
+        openVoiceStatusModal();
+      } else {
+        showToast('❌ Status post failed');
+      }
+    }).catch(() => showToast('❌ Status post error'));
+  };
+  reader.readAsDataURL(file);
+}
+
+function openTextStatusPrompt() {
+  const text = prompt('Enter status text:');
+  if (text === null) return;
+  const trimmed = text.trim();
+  if (!trimmed) return alert('Status text cannot be empty');
+  
+  showToast('⏳ Posting status text...');
+  fetch(`${HTTP_URL}/api/voice-status`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ username: myUsername, audioData: trimmed, audioMime: 'text/plain' })
+  }).then(res => res.json()).then(data => {
+    if (data.success) {
+      showToast('✅ Status posted successfully!');
+      openVoiceStatusModal();
+    } else {
+      showToast('❌ Status post failed');
+    }
+  }).catch(() => showToast('❌ Status post error'));
+}
+
+function startProgressBar(duration) {
+  const progress = document.getElementById('statusProgress');
+  if (!progress) return;
+  progress.style.transition = 'none';
+  progress.style.width = '0%';
+  setTimeout(() => {
+    progress.style.transition = `width ${duration}ms linear`;
+    progress.style.width = '100%';
+  }, 50);
+}
+
+function closeStatusViewer() {
+  const viewer = document.getElementById('statusViewer');
+  const container = document.getElementById('statusContentContainer');
+  if (viewer) viewer.classList.add('hide');
+  if (container) container.style.background = 'none';
+  
+  if (statusTimeout) { clearTimeout(statusTimeout); statusTimeout = null; }
+  if (statusAudioElement) {
+    statusAudioElement.pause();
+    statusAudioElement.src = '';
+    statusAudioElement = null;
   }
 }
 

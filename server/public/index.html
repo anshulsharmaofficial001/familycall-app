@@ -293,8 +293,24 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
         </div>
       </div>
       <div class="chat-messages" id="chatMessages"></div>
-      <div class="chat-input-bar">
+      <input type="file" id="chatFileInput" style="display:none" onchange="handleFileSelected(this)">
+      <div class="chat-input-bar" style="position:relative">
+        <div style="position:relative;display:flex;align-items:center">
+          <button id="chatAttachBtn" onclick="toggleAttachMenu(event)" title="Attach file" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2);padding:4px;display:flex;align-items:center;justify-content:center;outline:none">📎</button>
+          <div id="attachMenu" class="hide" style="position:absolute;bottom:52px;left:0;background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.15);display:flex;flex-direction:column;gap:2px;padding:6px;z-index:100;min-width:140px;border:1px solid #EDF2F7">
+            <button type="button" onclick="triggerFileInput('image/*,video/*')" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">🖼️ Gallery</button>
+            <button type="button" onclick="triggerFileInput('*/*')" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">📄 Document</button>
+            <button type="button" onclick="shareContactClicked()" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">👤 Contact ID</button>
+            <button type="button" onclick="shareCurrentLocation()" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">📍 Location</button>
+          </div>
+        </div>
         <button class="voice-note-btn" id="voiceNoteBtn" title="Voice Note">🎙️</button>
+        
+        <div id="voicePreviewArea" class="hide" style="display:flex;align-items:center;gap:8px;flex:1;background:#F0F4FF;border-radius:22px;padding:4px 12px;margin:0 4px;border:1px solid #D0E0FF">
+          <button type="button" id="voiceDiscardBtn" onclick="clearVoicePreview()" style="background:none;border:none;font-size:13px;cursor:pointer;color:#C62828;padding:4px;font-weight:800;white-space:nowrap;outline:none">🗑️ Discard</button>
+          <audio id="voicePreviewPlayer" controls style="flex:1;height:28px"></audio>
+        </div>
+
         <input id="chatInput" placeholder="Type a message..." maxlength="500">
         <button class="chat-send-btn" id="chatSendBtn">➤</button>
       </div>
@@ -433,11 +449,50 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 <!-- Voice Status Modal -->
 <div id="voiceStatusModal" class="modal-overlay hide">
   <div class="modal-card" style="text-align:center">
-    <h3>🎙️ Voice Status</h3>
-    <p style="font-size:13px;color:var(--text2);margin:8px 0 16px">Record a voice note for your family (24hrs)</p>
-    <button id="vsRecordBtn" class="main-btn" onclick="recordVoiceStatus()">🎙️ Record Status</button>
-    <div id="vsStatusList" style="margin-top:16px;text-align:left"></div>
+    <h3>📱 Status Updates</h3>
+    <p style="font-size:13px;color:var(--text2);margin:8px 0 16px">Post updates for your family (24hrs)</p>
+    
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+      <button id="vsRecordBtn" class="main-btn" onclick="recordVoiceStatus()" style="flex:1;font-size:13px;padding:10px 4px">🎙️ Voice</button>
+      <button type="button" class="main-btn" onclick="triggerStatusFileInput()" style="flex:1;font-size:13px;padding:10px 4px;background:#E8F4FF;color:var(--primary)">🖼️ Media</button>
+      <button type="button" class="main-btn" onclick="openTextStatusPrompt()" style="flex:1;font-size:13px;padding:10px 4px;background:#E8F5E9;color:#2E7D32">✍️ Text</button>
+    </div>
+    <input type="file" id="statusFileInput" style="display:none" onchange="handleStatusFileSelected(this)" accept="image/*,video/*">
+    
+    <div id="vsStatusList" style="margin-top:16px;text-align:left;max-height:200px;overflow-y:auto"></div>
     <button class="cancel-btn" style="margin-top:12px" onclick="document.getElementById('voiceStatusModal').classList.add('hide')">Close</button>
+  </div>
+</div>
+
+<!-- Fullscreen Image Preview Modal -->
+<div id="imagePreviewModal" class="hide" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="this.classList.add('hide')">
+  <img id="imagePreviewModalImg" style="max-width:95%;max-height:95%;object-fit:contain;border-radius:8px">
+  <button style="position:absolute;top:20px;right:20px;background:none;border:none;color:#fff;font-size:30px;cursor:pointer">✕</button>
+</div>
+
+<!-- Contact Select Modal -->
+<div id="contactSelectModal" class="modal-overlay hide" style="z-index:999">
+  <div class="modal-card" style="max-width:320px">
+    <h3 style="margin-top:0">Select Contact to Send</h3>
+    <div id="contactSelectContainer" style="max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+    <button type="button" onclick="closeContactSelectModal()" style="width:100%;padding:10px;border-radius:12px;background:#EDF2F7;border:none;font-weight:bold;cursor:pointer">Cancel</button>
+  </div>
+</div>
+
+<!-- Fullscreen Status Viewer -->
+<div id="statusViewer" class="hide" style="position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center">
+  <div style="position:absolute;top:20px;left:20px;right:20px;height:4px;background:rgba(255,255,255,0.3);border-radius:2px;overflow:hidden">
+    <div id="statusProgress" style="height:100%;width:0%;background:#fff"></div>
+  </div>
+  <div style="position:absolute;top:32px;left:20px;right:20px;display:flex;align-items:center;gap:12px;z-index:10">
+    <div id="statusUserAvatar" style="width:40px;height:40px;border-radius:50%;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px"></div>
+    <div style="color:#fff;text-align:left">
+      <div id="statusUserName" style="font-weight:bold;font-size:15px"></div>
+      <div id="statusTime" style="font-size:11px;opacity:0.8"></div>
+    </div>
+    <button onclick="closeStatusViewer()" style="margin-left:auto;background:none;border:none;color:#fff;font-size:28px;cursor:pointer;padding:4px">✕</button>
+  </div>
+  <div id="statusContentContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box">
   </div>
 </div>
 

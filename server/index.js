@@ -91,10 +91,10 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 17,
-    versionName: '4.3',
+    versionCode: 18,
+    versionName: '4.4',
     apkUrl: 'https://familycall-server-tpyh.onrender.com/FamilyCall-latest.apk',
-    releaseNotes: 'New features: Groups, SOS, Live Location, Voice Status, Battery Monitor, Birthday Alerts, Auto-update!'
+    releaseNotes: 'New features: Gallery photos & videos sharing, Documents attachment, Location sharing, User Contact sharing, Voice note preview, Full WhatsApp-style Status updates (Photos, Videos, Text, Voice), Online status sync fixes, Browser download backup updater!'
   });
 });
 

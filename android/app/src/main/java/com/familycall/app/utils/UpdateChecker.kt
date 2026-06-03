@@ -76,6 +76,14 @@ object UpdateChecker {
             .setPositiveButton("Update Now") { _, _ ->
                 downloadAndInstall(activity, apkUrl, versionName)
             }
+            .setNeutralButton("Open in Browser") { _, _ ->
+                try {
+                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl))
+                    activity.startActivity(browserIntent)
+                } catch (e: Exception) {
+                    Toast.makeText(activity, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
             .setNegativeButton("Later", null)
             .setCancelable(false)
             .show()
@@ -168,7 +176,19 @@ object UpdateChecker {
                 } catch (e: Exception) {
                     activity.runOnUiThread {
                         dialog.dismiss()
-                        Toast.makeText(activity, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                        AlertDialog.Builder(activity)
+                            .setTitle("Update Failed")
+                            .setMessage("In-app download failed: ${e.message}\n\nWould you like to download it via your web browser instead?")
+                            .setPositiveButton("Open Browser") { _, _ ->
+                                try {
+                                    val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(apkUrl))
+                                    activity.startActivity(browserIntent)
+                                } catch (ex: Exception) {
+                                    Toast.makeText(activity, "Could not open browser: ${ex.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
                     }
                 }
             }.start()
