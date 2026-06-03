@@ -91,10 +91,10 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 20,
-    versionName: '4.6',
+    versionCode: 21,
+    versionName: '4.7',
     apkUrl: 'https://familycall-server-tpyh.onrender.com/FamilyCall-latest.apk',
-    releaseNotes: 'Fixed login persistence issue when swiped from recents/offline launch, and updated version to v4.6!'
+    releaseNotes: 'WhatsApp-style chats overhauled: splash screen, read tick status icons, real-time typing indicators, circular profile image cropper, call timers, busy status, and native login persistence!'
   });
 });
 
@@ -314,7 +314,7 @@ app.get('/api/messages/:username', async (req, res) => {
     for (const msg of r.rows) {
       const other = msg.from_user === username ? msg.to_target : msg.from_user;
       if (!result[other]) result[other] = [];
-      result[other].push({ from: msg.from_user, to: msg.to_target, text: msg.text, voiceData: msg.voice_data, voiceMime: msg.voice_mime, ts: msg.ts });
+      result[other].push({ id: msg.id, from: msg.from_user, to: msg.to_target, text: msg.text, voiceData: msg.voice_data, voiceMime: msg.voice_mime, status: msg.status, ts: msg.ts });
     }
     res.json(result);
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -623,13 +623,18 @@ async function handleMessage(ws, msg, username, name) {
     case 'chat': {
       const toKey = (msg.to||'').toLowerCase();
       const ts = Date.now();
+      const isOnline = !!onlineUsers[toKey];
+      const status = isOnline ? 'delivered' : 'sent';
       // Save to Turso
-      await db.execute({
-        sql: 'INSERT INTO messages (from_user, to_target, is_group, text, voice_data, voice_mime, ts) VALUES (?,?,0,?,?,?,?)',
-        args: [username, toKey, msg.text||null, msg.voiceData||null, msg.voiceMime||null, ts]
+      const insertResult = await db.execute({
+        sql: 'INSERT INTO messages (from_user, to_target, is_group, text, voice_data, voice_mime, status, ts) VALUES (?,?,0,?,?,?,?,?)',
+        args: [username, toKey, msg.text||null, msg.voiceData||null, msg.voiceMime||null, status, ts]
       });
-      ws.send(JSON.stringify({ type:'chat_sent', to: toKey, text: msg.text, ts }));
-      sendTo(toKey, { type:'chat', from: username, text: msg.text, voiceData: msg.voiceData||null, voiceMime: msg.voiceMime||null, ts });
+      const msgId = insertResult.lastInsertRowid ? String(insertResult.lastInsertRowid) : String(ts);
+      ws.send(JSON.stringify({ type:'chat_sent', id: msgId, to: toKey, text: msg.text, status, ts }));
+      if (isOnline) {
+        sendTo(toKey, { type:'chat', id: msgId, from: username, text: msg.text, voiceData: msg.voiceData||null, voiceMime: msg.voiceMime||null, status: 'delivered', ts });
+      }
       pruneMessages().catch(()=>{});
       break;
     }
@@ -637,17 +642,67 @@ async function handleMessage(ws, msg, username, name) {
     case 'group_chat': {
       const groupId = msg.groupId;
       const ts = Date.now();
-      await db.execute({
-        sql: 'INSERT INTO messages (from_user, to_target, is_group, text, voice_data, voice_mime, ts) VALUES (?,?,1,?,?,?,?)',
+      // Insert with status = 'sent' for group messages
+      const insertResult = await db.execute({
+        sql: 'INSERT INTO messages (from_user, to_target, is_group, text, voice_data, voice_mime, status, ts) VALUES (?,?,1,?,?,?,\'sent\',?)',
         args: [username, groupId, msg.text||null, msg.voiceData||null, msg.voiceMime||null, ts]
       });
+      const msgId = insertResult.lastInsertRowid ? String(insertResult.lastInsertRowid) : String(ts);
       const members = await getGroupMembers(groupId);
       for (const m of members) {
         if (m.username !== username) {
-          sendTo(m.username, { type:'group_chat', groupId, from: username, fromName: name, text: msg.text, voiceData: msg.voiceData||null, voiceMime: msg.voiceMime||null, ts });
+          sendTo(m.username, { type:'group_chat', id: msgId, groupId, from: username, fromName: name, text: msg.text, voiceData: msg.voiceData||null, voiceMime: msg.voiceMime||null, ts });
         }
       }
-      ws.send(JSON.stringify({ type:'group_chat_sent', groupId, ts }));
+      ws.send(JSON.stringify({ type:'group_chat_sent', id: msgId, groupId, ts }));
+      break;
+    }
+
+    case 'msg_delivered': {
+      const msgId = msg.id;
+      const sender = (msg.from||'').toLowerCase();
+      await db.execute({
+        sql: "UPDATE messages SET status = 'delivered' WHERE id = ? AND status = 'sent'",
+        args: [msgId]
+      });
+      sendTo(sender, { type: 'msg_delivered_confirm', id: msgId, to: username });
+      break;
+    }
+
+    case 'msg_read': {
+      const msgId = msg.id;
+      const sender = (msg.from||'').toLowerCase();
+      await db.execute({
+        sql: "UPDATE messages SET status = 'read' WHERE id = ? AND status != 'read'",
+        args: [msgId]
+      });
+      sendTo(sender, { type: 'msg_read_confirm', id: msgId, to: username });
+      break;
+    }
+
+    case 'read_all': {
+      const sender = (msg.from||'').toLowerCase();
+      await db.execute({
+        sql: "UPDATE messages SET status = 'read' WHERE from_user = ? AND to_target = ? AND is_group = 0 AND status != 'read'",
+        args: [sender, username]
+      });
+      sendTo(sender, { type: 'read_all_confirmed', reader: username });
+      break;
+    }
+
+    case 'typing': {
+      const target = (msg.target||'').toLowerCase();
+      const isGroup = !!msg.isGroup;
+      if (isGroup) {
+        const members = await getGroupMembers(target);
+        for (const m of members) {
+          if (m.username !== username) {
+            sendTo(m.username, { type: 'typing', from: username, fromName: name, target, isTyping: msg.isTyping, isGroup: true });
+          }
+        }
+      } else {
+        sendTo(target, { type: 'typing', from: username, fromName: name, target: username, isTyping: msg.isTyping, isGroup: false });
+      }
       break;
     }
 

@@ -45,6 +45,9 @@ class MainActivity : AppCompatActivity() {
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
 
         val missing = permissions.filter {
@@ -79,6 +82,8 @@ class MainActivity : AppCompatActivity() {
         settings.mediaPlaybackRequiresUserGesture = false
         settings.setGeolocationEnabled(true)
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        
+        webView.addJavascriptInterface(WebAppInterface(this), "AndroidApp")
         
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
@@ -146,6 +151,43 @@ class MainActivity : AppCompatActivity() {
             webView.goBack()
         } else {
             super.onBackPressed()
+        }
+    }
+
+    class WebAppInterface(private val activity: MainActivity) {
+        @android.webkit.JavascriptInterface
+        fun saveLogin(username: String, name: String, role: String) {
+            val prefs = activity.getSharedPreferences("familycall_prefs", android.content.Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putString("username", username)
+                putString("name", name)
+                putString("role", role)
+                apply()
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun clearLogin() {
+            val prefs = activity.getSharedPreferences("familycall_prefs", android.content.Context.MODE_PRIVATE)
+            prefs.edit().clear().apply()
+        }
+
+        @android.webkit.JavascriptInterface
+        fun getUsername(): String {
+            val prefs = activity.getSharedPreferences("familycall_prefs", android.content.Context.MODE_PRIVATE)
+            return prefs.getString("username", "") ?: ""
+        }
+
+        @android.webkit.JavascriptInterface
+        fun getName(): String {
+            val prefs = activity.getSharedPreferences("familycall_prefs", android.content.Context.MODE_PRIVATE)
+            return prefs.getString("name", "") ?: ""
+        }
+
+        @android.webkit.JavascriptInterface
+        fun getRole(): String {
+            val prefs = activity.getSharedPreferences("familycall_prefs", android.content.Context.MODE_PRIVATE)
+            return prefs.getString("role", "") ?: ""
         }
     }
 }

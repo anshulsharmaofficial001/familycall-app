@@ -35,6 +35,7 @@ async function initDB() {
       text TEXT,
       voice_data TEXT,
       voice_mime TEXT,
+      status TEXT DEFAULT 'sent',
       ts INTEGER DEFAULT (strftime('%s','now') * 1000)
     )`,
     // Groups table
@@ -84,6 +85,12 @@ async function initDB() {
       PRIMARY KEY (username, year)
     )`,
   ], 'write');
+
+  try {
+    await db.execute("ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'sent'");
+  } catch(e) {
+    // Already exists, ignore
+  }
 
   // Create superadmin if not exists
   const existing = await db.execute({

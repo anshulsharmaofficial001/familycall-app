@@ -1,0 +1,484 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .wa-wrap { padding: 1rem 0; }
+  .screen-label { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin: 1.5rem 0 0.5rem; text-align: center; letter-spacing: 0.03em; }
+  .phone { width: 220px; margin: 0 auto; border-radius: 24px; border: 1.5px solid var(--color-border-secondary); background: var(--color-background-primary); overflow: hidden; }
+  .wa-bar { background: #075E54; padding: 10px 12px 8px; }
+  .wa-bar-title { color: #fff; font-size: 15px; font-weight: 500; }
+  .wa-bar-sub { color: #b2dfdb; font-size: 11px; }
+  .wa-bar-row { display: flex; align-items: center; justify-content: space-between; }
+  .wa-icons { display: flex; gap: 14px; color: #fff; font-size: 18px; }
+  .wa-tabs { display: flex; background: #075E54; border-bottom: 2px solid #25D366; }
+  .wa-tab { flex: 1; text-align: center; padding: 8px 0; font-size: 11px; color: #b2dfdb; }
+  .wa-tab.active { color: #fff; border-bottom: 2px solid #25D366; }
+  .chat-list { }
+  .chat-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: #128C7E; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; color: #fff; flex-shrink: 0; }
+  .avatar.grp { background: #5C6BC0; }
+  .avatar.me { background: #FF7043; }
+  .chat-info { flex: 1; min-width: 0; }
+  .chat-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .chat-preview { font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .chat-time { font-size: 10px; color: var(--color-text-secondary); }
+  .badge { background: #25D366; color: #fff; font-size: 10px; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+  .divider { height: 0.5px; background: var(--color-border-tertiary); margin: 0; }
+  .msg-area { background: #ECE5DD; min-height: 200px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .msg-area.dark-bg { background: #1a1a2e; }
+  .bubble { max-width: 75%; padding: 5px 8px 3px; border-radius: 8px; font-size: 11px; line-height: 1.4; }
+  .bubble.out { background: #DCF8C6; align-self: flex-end; color: #111; }
+  .bubble.in { background: #fff; align-self: flex-start; color: #111; }
+  .bubble.in .sender { font-size: 10px; font-weight: 500; color: #128C7E; }
+  .bubble-meta { font-size: 9px; color: #999; text-align: right; }
+  .tick-blue { color: #34B7F1; }
+  .tick-grey { color: #999; }
+  .typing-bubble { background: #fff; align-self: flex-start; padding: 6px 10px; border-radius: 8px; display: flex; gap: 3px; align-items: center; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: #999; animation: bounce 1s infinite; }
+  .dot:nth-child(2) { animation-delay: 0.15s; }
+  .dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+  .msg-input { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--color-background-primary); border-top: 0.5px solid var(--color-border-tertiary); }
+  .msg-box { flex: 1; background: var(--color-background-secondary); border-radius: 20px; padding: 5px 10px; font-size: 11px; color: var(--color-text-secondary); border: none; }
+  .send-btn { width: 28px; height: 28px; border-radius: 50%; background: #25D366; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; }
+  .profile-section { padding: 12px; }
+  .profile-header { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .profile-avatar { width: 64px; height: 64px; border-radius: 50%; background: #128C7E; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; color: #fff; }
+  .profile-name { font-size: 15px; font-weight: 500; color: var(--color-text-primary); }
+  .profile-about { font-size: 11px; color: var(--color-text-secondary); }
+  .profile-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .profile-icon { font-size: 18px; color: #128C7E; width: 24px; }
+  .profile-text { font-size: 12px; color: var(--color-text-primary); }
+  .profile-hint { font-size: 10px; color: var(--color-text-secondary); }
+  .action-btns { display: flex; justify-content: space-around; padding: 10px 0; }
+  .action-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .action-btn i { font-size: 20px; color: #128C7E; }
+  .action-btn span { font-size: 10px; color: var(--color-text-secondary); }
+  .call-screen { background: #075E54; min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 20px 12px 16px; }
+  .call-name { color: #fff; font-size: 17px; font-weight: 500; margin-top: 12px; }
+  .call-status { color: #b2dfdb; font-size: 12px; }
+  .call-avatar { width: 70px; height: 70px; border-radius: 50%; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-size: 26px; color: #fff; font-weight: 500; }
+  .call-btns { display: flex; gap: 20px; align-items: center; }
+  .call-btn { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+  .call-btn.end { background: #E53935; color: #fff; }
+  .call-btn.mute { background: rgba(255,255,255,0.2); color: #fff; }
+  .call-btn.spk { background: rgba(255,255,255,0.2); color: #fff; }
+  .busy-screen { background: #3e3e3e; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; }
+  .group-steps { padding: 0 8px; }
+  .step-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .step-num { width: 20px; height: 20px; border-radius: 50%; background: #25D366; color: #fff; font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-text { font-size: 12px; color: var(--color-text-primary); }
+  .contact-chip { display: inline-flex; align-items: center; gap: 4px; background: #E0F2F1; color: #00695C; padding: 3px 8px; border-radius: 12px; font-size: 10px; margin: 2px; }
+  .selected-area { padding: 6px 8px; display: flex; flex-wrap: wrap; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .group-name-input { padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .gni { flex: 1; border: none; background: transparent; font-size: 13px; color: var(--color-text-secondary); outline: none; border-bottom: 1.5px solid #25D366; padding-bottom: 3px; }
+  .status-bar { background: #054740; display: flex; justify-content: space-between; padding: 3px 10px; }
+  .status-bar span { color: #fff; font-size: 9px; }
+  .fab { position: absolute; bottom: 12px; right: 12px; width: 36px; height: 36px; border-radius: 50%; background: #25D366; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 18px; }
+  .relative { position: relative; }
+  .search-bar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--color-background-secondary); margin: 6px 10px; border-radius: 20px; }
+  .search-bar input { border: none; background: transparent; font-size: 12px; color: var(--color-text-primary); outline: none; flex: 1; }
+</style>
+
+<div class="wa-wrap">
+  <h2 class="sr-only">WhatsApp ke main screens ka mockup — chats, chat window, group, profile, call screens</h2>
+
+  <!-- 1. CHATS LIST -->
+  <p class="screen-label">1 — sari chats (home screen)</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar">
+      <div class="wa-bar-row">
+        <span class="wa-bar-title">WhatsApp</span>
+        <div class="wa-icons">
+          <i class="ti ti-camera" aria-hidden="true"></i>
+          <i class="ti ti-search" aria-hidden="true"></i>
+          <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+        </div>
+      </div>
+    </div>
+    <div class="wa-tabs">
+      <div class="wa-tab">Status</div>
+      <div class="wa-tab active">Chats</div>
+      <div class="wa-tab">Calls</div>
+    </div>
+    <div class="search-bar">
+      <i class="ti ti-search" style="font-size:14px; color:var(--color-text-secondary)" aria-hidden="true"></i>
+      <input placeholder="Search..." readonly />
+    </div>
+    <div class="chat-list">
+      <div class="chat-item">
+        <div class="avatar grp">FD</div>
+        <div class="chat-info">
+          <div class="chat-name">Friends Dhamaka</div>
+          <div class="chat-preview">Rahul: kal milte h kya</div>
+        </div>
+        <div class="chat-meta">
+          <div class="chat-time">9:30</div>
+          <div class="badge">3</div>
+        </div>
+      </div>
+      <div class="chat-item">
+        <div class="avatar">RK</div>
+        <div class="chat-info">
+          <div class="chat-name">Rohit Kumar</div>
+          <div class="chat-preview"><span class="tick-blue">✔✔</span> haan bhai theek hai</div>
+        </div>
+        <div class="chat-meta">
+          <div class="chat-time">8:50</div>
+        </div>
+      </div>
+      <div class="chat-item">
+        <div class="avatar me">PR</div>
+        <div class="chat-info">
+          <div class="chat-name">Priya</div>
+          <div class="chat-preview"><span class="tick-grey">✔✔</span> okay noted</div>
+        </div>
+        <div class="chat-meta">
+          <div class="chat-time">Tue</div>
+        </div>
+      </div>
+      <div class="chat-item">
+        <div class="avatar grp" style="background:#7B1FA2">WC</div>
+        <div class="chat-info">
+          <div class="chat-name">Work Crew</div>
+          <div class="chat-preview">Neha: meeting 3 baje</div>
+        </div>
+        <div class="chat-meta">
+          <div class="chat-time">Mon</div>
+          <div class="badge">7</div>
+        </div>
+      </div>
+    </div>
+    <div class="relative" style="height:36px">
+      <div class="fab"><i class="ti ti-message" aria-hidden="true"></i></div>
+    </div>
+  </div>
+
+  <!-- 2. ONE CHAT OPEN -->
+  <p class="screen-label">2 — ek chat open karne pe</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar" style="padding:8px 10px">
+      <div class="wa-bar-row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="ti ti-arrow-left" style="color:#fff;font-size:16px" aria-hidden="true"></i>
+          <div class="avatar" style="width:32px;height:32px;font-size:12px">RK</div>
+          <div>
+            <div class="wa-bar-title" style="font-size:13px">Rohit Kumar</div>
+            <div class="wa-bar-sub">online</div>
+          </div>
+        </div>
+        <div class="wa-icons" style="font-size:16px">
+          <i class="ti ti-phone" aria-hidden="true"></i>
+          <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+        </div>
+      </div>
+    </div>
+    <div class="msg-area">
+      <div class="bubble in">
+        <div>bhai kya haal hai</div>
+        <div class="bubble-meta">9:10</div>
+      </div>
+      <div class="bubble out">
+        <div>sab badhiya yaar</div>
+        <div class="bubble-meta">9:12 <span class="tick-blue">✔✔</span></div>
+      </div>
+      <div class="bubble in">
+        <div>kal free hai kya</div>
+        <div class="bubble-meta">9:15</div>
+      </div>
+      <div class="bubble out">
+        <div>haan bhai theek hai</div>
+        <div class="bubble-meta">9:20 <span class="tick-grey">✔✔</span></div>
+      </div>
+    </div>
+    <div class="msg-input">
+      <i class="ti ti-mood-smile" style="font-size:20px;color:var(--color-text-secondary)" aria-hidden="true"></i>
+      <div class="msg-box">Message</div>
+      <i class="ti ti-paperclip" style="font-size:18px;color:var(--color-text-secondary)" aria-hidden="true"></i>
+      <div class="send-btn"><i class="ti ti-send" style="font-size:14px" aria-hidden="true"></i></div>
+    </div>
+  </div>
+
+  <!-- 3. TYPING INDICATOR -->
+  <p class="screen-label">3 — jab dusra type kar raha ho</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar" style="padding:8px 10px">
+      <div class="wa-bar-row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="ti ti-arrow-left" style="color:#fff;font-size:16px" aria-hidden="true"></i>
+          <div class="avatar" style="width:32px;height:32px;font-size:12px">RK</div>
+          <div>
+            <div class="wa-bar-title" style="font-size:13px">Rohit Kumar</div>
+            <div class="wa-bar-sub" style="color:#25D366">typing...</div>
+          </div>
+        </div>
+        <div class="wa-icons" style="font-size:16px">
+          <i class="ti ti-phone" aria-hidden="true"></i>
+          <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+        </div>
+      </div>
+    </div>
+    <div class="msg-area">
+      <div class="bubble in">
+        <div>bhai kal milte h</div>
+        <div class="bubble-meta">9:20</div>
+      </div>
+      <div class="bubble out">
+        <div>haan pakka</div>
+        <div class="bubble-meta">9:21 <span class="tick-blue">✔✔</span></div>
+      </div>
+      <div class="typing-bubble">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+    </div>
+    <div class="msg-input">
+      <i class="ti ti-mood-smile" style="font-size:20px;color:var(--color-text-secondary)" aria-hidden="true"></i>
+      <div class="msg-box">Message</div>
+      <div class="send-btn"><i class="ti ti-send" style="font-size:14px" aria-hidden="true"></i></div>
+    </div>
+  </div>
+
+  <!-- 4. GROUP CHAT -->
+  <p class="screen-label">4 — group chat screen</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar" style="padding:8px 10px">
+      <div class="wa-bar-row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <i class="ti ti-arrow-left" style="color:#fff;font-size:16px" aria-hidden="true"></i>
+          <div class="avatar grp" style="width:32px;height:32px;font-size:12px">FD</div>
+          <div>
+            <div class="wa-bar-title" style="font-size:13px">Friends Dhamaka</div>
+            <div class="wa-bar-sub">Rahul, Priya, Rohit...</div>
+          </div>
+        </div>
+        <div class="wa-icons" style="font-size:16px">
+          <i class="ti ti-phone" aria-hidden="true"></i>
+          <i class="ti ti-dots-vertical" aria-hidden="true"></i>
+        </div>
+      </div>
+    </div>
+    <div class="msg-area">
+      <div class="bubble in">
+        <div class="sender">Rahul</div>
+        <div>kal milte h kya yaar</div>
+        <div class="bubble-meta">9:00</div>
+      </div>
+      <div class="bubble in" style="background:#fff">
+        <div class="sender" style="color:#E91E63">Priya</div>
+        <div>main free hoon</div>
+        <div class="bubble-meta">9:02</div>
+      </div>
+      <div class="bubble out">
+        <div>haan main bhi</div>
+        <div class="bubble-meta">9:05 <span class="tick-blue">✔✔</span></div>
+      </div>
+      <div class="typing-bubble">
+        <div style="font-size:9px;color:#128C7E;margin-right:3px">Rahul</div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+    </div>
+    <div class="msg-input">
+      <i class="ti ti-mood-smile" style="font-size:20px;color:var(--color-text-secondary)" aria-hidden="true"></i>
+      <div class="msg-box">Message</div>
+      <div class="send-btn"><i class="ti ti-send" style="font-size:14px" aria-hidden="true"></i></div>
+    </div>
+  </div>
+
+  <!-- 5. GROUP BANANE KE STEPS -->
+  <p class="screen-label">5 — group banane ki screen</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar">
+      <div class="wa-bar-row">
+        <div style="display:flex;align-items:center;gap:6px">
+          <i class="ti ti-x" style="color:#fff;font-size:16px" aria-hidden="true"></i>
+          <span class="wa-bar-title" style="font-size:14px">New Group</span>
+        </div>
+        <i class="ti ti-arrow-right" style="color:#fff;font-size:18px" aria-hidden="true"></i>
+      </div>
+    </div>
+    <div class="selected-area">
+      <span class="contact-chip"><i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> Rahul</span>
+      <span class="contact-chip"><i class="ti ti-user" style="font-size:11px" aria-hidden="true"></i> Priya</span>
+    </div>
+    <div class="search-bar" style="margin:6px 10px">
+      <input placeholder="Search contacts..." readonly style="font-size:12px" />
+    </div>
+    <div class="chat-list">
+      <div class="chat-item">
+        <div class="avatar">RK</div>
+        <div class="chat-info"><div class="chat-name">Rohit Kumar</div></div>
+        <i class="ti ti-circle-check-filled" style="font-size:20px;color:#25D366" aria-hidden="true"></i>
+      </div>
+      <div class="chat-item">
+        <div class="avatar" style="background:#E53935">NK</div>
+        <div class="chat-info"><div class="chat-name">Neha Khatri</div></div>
+        <i class="ti ti-circle" style="font-size:20px;color:var(--color-border-secondary)" aria-hidden="true"></i>
+      </div>
+      <div class="chat-item">
+        <div class="avatar me">PR</div>
+        <div class="chat-info"><div class="chat-name">Priya</div></div>
+        <i class="ti ti-circle-check-filled" style="font-size:20px;color:#25D366" aria-hidden="true"></i>
+      </div>
+    </div>
+    <div class="group-name-input" style="margin-top:4px">
+      <i class="ti ti-camera" style="font-size:22px;color:#128C7E" aria-hidden="true"></i>
+      <input class="gni" placeholder="Group name (required)" readonly />
+    </div>
+  </div>
+
+  <!-- 6. KISI KI PROFILE -->
+  <p class="screen-label">6 — kisi contact ki profile</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar" style="padding:8px 10px">
+      <div class="wa-bar-row">
+        <i class="ti ti-arrow-left" style="color:#fff;font-size:18px" aria-hidden="true"></i>
+        <div class="wa-icons"><i class="ti ti-dots-vertical" aria-hidden="true"></i></div>
+      </div>
+    </div>
+    <div class="profile-section">
+      <div class="profile-header">
+        <div class="profile-avatar">RK</div>
+        <div class="profile-name">Rohit Kumar</div>
+        <div class="profile-about">+91 98765 43210</div>
+      </div>
+      <div class="action-btns">
+        <div class="action-btn">
+          <i class="ti ti-message" aria-hidden="true"></i>
+          <span>Message</span>
+        </div>
+        <div class="action-btn">
+          <i class="ti ti-phone" aria-hidden="true"></i>
+          <span>Call</span>
+        </div>
+        <div class="action-btn">
+          <i class="ti ti-video" aria-hidden="true"></i>
+          <span>Video</span>
+        </div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-info-circle profile-icon" aria-hidden="true"></i>
+        <div>
+          <div class="profile-text">Hey there! I am using WhatsApp.</div>
+          <div class="profile-hint">About</div>
+        </div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-bell-off profile-icon" aria-hidden="true"></i>
+        <div class="profile-text">Mute notifications</div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-ban profile-icon" style="color:#E53935" aria-hidden="true"></i>
+        <div class="profile-text" style="color:#E53935">Block Rohit Kumar</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. APNI KHUD KI PROFILE -->
+  <p class="screen-label">7 — apni khud ki profile (settings)</p>
+  <div class="phone">
+    <div class="status-bar"><span>9:41</span><span>100%</span></div>
+    <div class="wa-bar">
+      <div class="wa-bar-row">
+        <span class="wa-bar-title">Settings</span>
+        <i class="ti ti-search" style="color:#fff;font-size:18px" aria-hidden="true"></i>
+      </div>
+    </div>
+    <div class="profile-section">
+      <div class="chat-item" style="padding:12px 0 12px 0;border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div class="profile-avatar" style="width:52px;height:52px;font-size:18px">TU</div>
+        <div class="chat-info">
+          <div class="chat-name" style="font-size:14px">Tumhara Naam</div>
+          <div class="chat-preview">Hey there! I am using WhatsApp</div>
+        </div>
+        <i class="ti ti-qrcode" style="font-size:22px;color:#128C7E" aria-hidden="true"></i>
+      </div>
+      <div class="profile-row" style="margin-top:8px">
+        <i class="ti ti-key profile-icon" aria-hidden="true"></i>
+        <div class="profile-text">Account</div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-lock profile-icon" aria-hidden="true"></i>
+        <div class="profile-text">Privacy</div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-message-circle profile-icon" aria-hidden="true"></i>
+        <div class="profile-text">Chats</div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-bell profile-icon" aria-hidden="true"></i>
+        <div class="profile-text">Notifications</div>
+      </div>
+      <div class="profile-row">
+        <i class="ti ti-help profile-icon" aria-hidden="true"></i>
+        <div class="profile-text">Help</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. CALL CHAL RAHI HAI -->
+  <p class="screen-label">8 — call chal rahi hai</p>
+  <div class="phone">
+    <div class="status-bar" style="background:#054740"><span>9:41</span><span>100%</span></div>
+    <div class="call-screen">
+      <div style="text-align:center">
+        <div class="call-avatar">RK</div>
+        <div class="call-name">Rohit Kumar</div>
+        <div class="call-status">00:45</div>
+      </div>
+      <div class="call-btns">
+        <div class="call-btn mute"><i class="ti ti-microphone-off" aria-hidden="true"></i></div>
+        <div class="call-btn end"><i class="ti ti-phone-off" aria-hidden="true"></i></div>
+        <div class="call-btn spk"><i class="ti ti-volume" aria-hidden="true"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. DUSRA CALL PE HAI -->
+  <p class="screen-label">9 — woh dusri call pe hai</p>
+  <div class="phone">
+    <div class="status-bar" style="background:#2a2a2a"><span>9:41</span><span>100%</span></div>
+    <div class="busy-screen">
+      <div class="call-avatar" style="background:rgba(255,255,255,0.1)">RK</div>
+      <div class="call-name" style="color:#fff">Rohit Kumar</div>
+      <div class="call-status" style="color:#ffcc80">on another call</div>
+      <div style="margin-top:12px">
+        <div class="call-btn end" style="margin:0 auto"><i class="ti ti-phone-off" aria-hidden="true"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. INCOMING CALL -->
+  <p class="screen-label">10 — tumhare paas call aa rahi hai</p>
+  <div class="phone">
+    <div class="status-bar" style="background:#054740"><span>9:41</span><span>100%</span></div>
+    <div class="call-screen" style="background:#1b5e20">
+      <div style="text-align:center">
+        <div class="call-avatar">PR</div>
+        <div class="call-name">Priya</div>
+        <div class="call-status">WhatsApp call...</div>
+      </div>
+      <div style="display:flex;gap:32px;align-items:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div class="call-btn end"><i class="ti ti-phone-off" aria-hidden="true"></i></div>
+          <span style="color:#b2dfdb;font-size:10px">Decline</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div class="call-btn" style="background:#25D366;color:#fff"><i class="ti ti-phone" aria-hidden="true"></i></div>
+          <span style="color:#b2dfdb;font-size:10px">Accept</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

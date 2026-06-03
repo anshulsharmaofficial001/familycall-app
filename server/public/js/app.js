@@ -63,6 +63,9 @@ function doLogin() {
       localStorage.setItem('fc_user', r.user.username);
       localStorage.setItem('fc_name', r.user.name);
       localStorage.setItem('fc_role', r.user.role || 'user');
+      if (window.AndroidApp) {
+        try { window.AndroidApp.saveLogin(r.user.username, r.user.name, r.user.role || 'user'); } catch(e){}
+      }
       connectApp(r.user.username, r.user.name, r.user.role || 'user');
     })
     .catch(e => {
@@ -94,6 +97,9 @@ function doRegister() {
       localStorage.setItem('fc_user', u);
       localStorage.setItem('fc_name', n);
       localStorage.setItem('fc_role', 'user');
+      if (window.AndroidApp) {
+        try { window.AndroidApp.saveLogin(u, n, 'user'); } catch(e){}
+      }
       connectApp(u, n, 'user');
     })
     .catch(e => {
@@ -183,6 +189,9 @@ window.addEventListener('unhandledrejection', e => slog('promise_rejection', { r
 ═══════════════════════════════════════════ */
 onClick('logoutBtn', () => {
   localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); localStorage.removeItem('fc_role');
+  if (window.AndroidApp) {
+    try { window.AndroidApp.clearLogin(); } catch(e){}
+  }
   if (ws) ws.close();
   $('mainPage').classList.add('hide'); $('loginPage').classList.remove('hide');
   $('loginUser').value=''; $('loginPass').value='';
@@ -208,7 +217,7 @@ function connectApp(username, name, role) {
     loadGroups();
   }).catch(()=>{ updateTopbar(); });
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
-  ws.onopen=()=>{slog('ws_open',{});updateTopbar();loadContacts();refreshInterval=setInterval(loadContacts,8000);};
+  ws.onopen=()=>{slog('ws_open',{});updateTopbar();loadContacts();hideSplashScreen();refreshInterval=setInterval(loadContacts,8000);};
   initSOSButton();
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
   ws.onclose=()=>{slog('ws_close',{});if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
@@ -266,9 +275,44 @@ function handleMsg(msg) {
       if (currentCallId===msg.callId && msg.data) receiveAudio(msg.data, msg.sampleRate || SAMPLE_RATE);
       break;
 
-    case 'chat':
-      appendChatMsg(msg.from,msg.text,false,msg.voiceData,msg.voiceMime); loadChatContacts();
+    case 'chat': {
+      const isCurrentChat = (chatTarget === msg.from && !currentGroupId);
+      const status = isCurrentChat ? 'read' : 'delivered';
+      appendChatMsg(msg.from, msg.text, false, msg.voiceData, msg.voiceMime, msg.id, status);
+      if (isCurrentChat) {
+        send({ type: 'msg_read', id: msg.id, from: msg.from });
+      } else {
+        send({ type: 'msg_delivered', id: msg.id, from: msg.from });
+      }
+      loadChatContacts();
       break;
+    }
+
+    case 'msg_delivered_confirm': {
+      if (chatTarget === msg.to && !currentGroupId) {
+        updateMessageTick(msg.id, 'delivered');
+      }
+      break;
+    }
+
+    case 'msg_read_confirm': {
+      if (chatTarget === msg.to && !currentGroupId) {
+        updateMessageTick(msg.id, 'read');
+      }
+      break;
+    }
+
+    case 'read_all_confirmed': {
+      if (chatTarget === msg.reader && !currentGroupId) {
+        updateAllMessageTicksToRead();
+      }
+      break;
+    }
+
+    case 'typing': {
+      handleTypingNotification(msg);
+      break;
+    }
 
     case 'friend_request':
       loadContacts(); // refresh to show pending
@@ -318,7 +362,7 @@ function handleMsg(msg) {
 
     case 'group_chat':
       if (currentGroupId === msg.groupId) {
-        appendGroupMsg(msg.fromName||msg.from, msg.text, false, msg.voiceData, msg.voiceMime);
+        appendGroupMsg(msg.fromName||msg.from, msg.text, false, msg.voiceData, msg.voiceMime, msg.id);
       }
       showToast(`💬 ${msg.fromName||msg.from}: ${msg.text||'🎤'}`);
       break;
@@ -627,7 +671,6 @@ async function startCall(username, name){
   audioStarted=false;
   isOnHold=false;
   send({type:'call',calleeUsername:username});
-  startCallTimer();
 }
 
 onClick('callEndBtn', ()=>{
@@ -953,6 +996,32 @@ function initMainUI() {
     if ($('chatInput')) $('chatInput').value = '';
   });
   bindEl('chatInput', 'onkeydown', e => { if (e.key === 'Enter') { const b = $('chatSendBtn'); if (b) b.click(); } });
+  
+  let lastTypingSent = 0;
+  let typingTimer = null;
+  bindEl('chatInput', 'oninput', () => {
+    if (!chatTarget && !currentGroupId) return;
+    const now = Date.now();
+    if (now - lastTypingSent > 1000) {
+      lastTypingSent = now;
+      send({
+        type: 'typing',
+        target: currentGroupId || chatTarget,
+        isTyping: true,
+        isGroup: !!currentGroupId
+      });
+    }
+    if (typingTimer) clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+      send({
+        type: 'typing',
+        target: currentGroupId || chatTarget,
+        isTyping: false,
+        isGroup: !!currentGroupId
+      });
+    }, 2000);
+  });
+
   initVoiceNoteBtn();
 }
 
@@ -1080,6 +1149,7 @@ function openChat(username, name) {
     const msgs = data[username] || [];
     document.getElementById('chatMessages').innerHTML = msgs.map(m => renderMsgHtml(m, false)).join('');
     document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+    send({ type: 'read_all', from: username });
   });
   const inp = document.getElementById('chatInput');
   if (inp) inp.focus();
@@ -1163,24 +1233,108 @@ function renderMsgHtml(m, isGroup) {
   }
 
   const showSender = isGroup && !mine;
-  return `<div class="chat-msg ${mine ? 'chat-mine' : 'chat-other'}">
-    ${showSender ? `<div style="font-size:10px;margin-bottom:4px;opacity:.7;font-weight:800">${m.from}</div>` : ''}
+  let tickHtml = '';
+  if (mine && !isGroup) {
+    const status = m.status || 'sent';
+    if (status === 'read') {
+      tickHtml = `<span class="tick-wrap tick-blue">✔✔</span>`;
+    } else if (status === 'delivered') {
+      tickHtml = `<span class="tick-wrap tick-grey">✔✔</span>`;
+    } else {
+      tickHtml = `<span class="tick-wrap tick-grey">✔</span>`;
+    }
+  }
+
+  return `<div class="chat-msg ${mine ? 'chat-mine' : 'chat-other'}" data-msgid="${m.id || ''}">
+    ${showSender ? `<span class="msg-sender-name">@${m.from}</span>` : ''}
     <div style="display:inline-block">${contentHtml}</div>
-    ${time ? `<span style="font-size:9px;opacity:.5;margin-left:6px;display:inline-block">${time}</span>` : ''}
+    ${time ? `<span style="font-size:9px;opacity:.5;margin-left:6px;display:inline-block;vertical-align:middle">${time}</span>` : ''}${tickHtml}
   </div>`;
 }
 
-function appendChatMsg(from,text,mine,voiceData,voiceMime){
+function appendChatMsg(from,text,mine,voiceData,voiceMime,id,status){
   if(!mine&&chatTarget!==from)return;
   const chatMessages = document.getElementById('chatMessages');
   if(!chatMessages) return;
-  const m = { from, text, voiceData, voiceMime, ts: Date.now() };
+  const m = { id, from, text, voiceData, voiceMime, status, ts: Date.now() };
   const html = renderMsgHtml(m, false);
   const temp = document.createElement('div');
   temp.innerHTML = html.trim();
   const div = temp.firstChild;
   chatMessages.appendChild(div);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function updateMessageTick(msgId, status) {
+  const msgEl = document.querySelector(`[data-msgid="${msgId}"]`);
+  if (!msgEl) return;
+  let tickWrap = msgEl.querySelector('.tick-wrap');
+  if (!tickWrap) {
+    tickWrap = document.createElement('span');
+    tickWrap.className = 'tick-wrap';
+    msgEl.appendChild(tickWrap);
+  }
+  if (status === 'read') {
+    tickWrap.className = 'tick-wrap tick-blue';
+    tickWrap.innerHTML = '✔✔';
+  } else if (status === 'delivered') {
+    tickWrap.className = 'tick-wrap tick-grey';
+    tickWrap.innerHTML = '✔✔';
+  } else {
+    tickWrap.className = 'tick-wrap tick-grey';
+    tickWrap.innerHTML = '✔';
+  }
+}
+
+function updateAllMessageTicksToRead() {
+  const ticks = document.querySelectorAll('#chatMessages .tick-wrap');
+  ticks.forEach(t => {
+    t.className = 'tick-wrap tick-blue';
+    t.innerHTML = '✔✔';
+  });
+}
+
+function handleTypingNotification(msg) {
+  if (chatTarget === msg.from && !currentGroupId && !msg.isGroup) {
+    const sub = document.getElementById('chatHeaderSub');
+    if (sub) {
+      if (msg.isTyping) {
+        sub.innerHTML = '<span class="typing-indicator">typing<span class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span></span>';
+      } else {
+        const friend = friendsCache.find(f => f.username === msg.from);
+        const online = friend ? friend.online : false;
+        sub.textContent = online ? '● Online' : '○ Offline';
+        sub.style.color = online ? 'var(--green)' : 'var(--text2)';
+      }
+    }
+  } else if (currentGroupId === msg.target && msg.isGroup) {
+    const sub = document.getElementById('chatHeaderSub');
+    if (sub) {
+      if (msg.isTyping) {
+        sub.innerHTML = `<span class="typing-indicator" style="font-size:11px">@${msg.fromName || msg.from} is typing<span class="typing-dots"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span></span>`;
+      } else {
+        sub.textContent = 'Group Chat';
+        sub.style.color = 'var(--text2)';
+      }
+    }
+  }
+
+  // Update in chats list preview
+  const chatItem = document.querySelector(`.chat-item[data-chatpartner="${msg.isGroup ? msg.target : msg.from}"]`);
+  if (chatItem) {
+    const preview = chatItem.querySelector('.chat-preview');
+    if (preview) {
+      if (msg.isTyping) {
+        if (!chatItem.dataset.originalPreview) {
+          chatItem.dataset.originalPreview = preview.innerHTML;
+        }
+        preview.innerHTML = `<span style="color:var(--green);font-weight:700">${msg.isGroup ? `@${msg.fromName||msg.from}: ` : ''}typing...</span>`;
+      } else if (chatItem.dataset.originalPreview) {
+        preview.innerHTML = chatItem.dataset.originalPreview;
+        delete chatItem.dataset.originalPreview;
+      }
+    }
+  }
 }
 
 let vnRecorder=null, vnStream=null, vnChunks=[], vnRecording=false;
@@ -1281,7 +1435,145 @@ function saveProfile(){
   }).catch(()=>alert('Error updating profile'));
 }
 
-// Handle avatar file input — no size limit
+// Image Cropper State variables
+let cropperImgData = null;
+let cropX = 0, cropY = 0;
+let cropZoom = 1;
+let isDraggingCrop = false;
+let dragStartX = 0, dragStartY = 0;
+
+function openCropper(b64) {
+  cropperImgData = b64;
+  const modal = $('cropperModal');
+  const img = $('cropImg');
+  const slider = $('cropZoomSlider');
+  if (!modal || !img) return;
+  
+  img.src = b64;
+  cropX = 0;
+  cropY = 0;
+  cropZoom = 1;
+  if (slider) slider.value = 1;
+  
+  img.onload = () => {
+    const vpSize = 200;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    const scale = vpSize / Math.min(w, h);
+    cropZoom = scale;
+    if (slider) {
+      slider.min = (scale * 0.5).toFixed(2);
+      slider.max = (scale * 4.0).toFixed(2);
+      slider.value = scale.toFixed(2);
+    }
+    cropX = (vpSize - w * scale) / 2;
+    cropY = (vpSize - h * scale) / 2;
+    updateCropTransform();
+  };
+  
+  modal.classList.remove('hide');
+}
+
+function updateCropTransform() {
+  const img = $('cropImg');
+  if (img) {
+    img.style.transform = `translate(${cropX}px, ${cropY}px) scale(${cropZoom})`;
+  }
+}
+
+function closeCropperModal() {
+  const modal = $('cropperModal');
+  if (modal) modal.classList.add('hide');
+  cropperImgData = null;
+}
+
+function confirmCrop() {
+  const img = $('cropImg');
+  if (!img || !cropperImgData) return;
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = 200;
+  canvas.height = 200;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, 200, 200);
+  
+  const drawWidth = img.naturalWidth * cropZoom;
+  const drawHeight = img.naturalHeight * cropZoom;
+  ctx.drawImage(img, cropX, cropY, drawWidth, drawHeight);
+  
+  const croppedB64 = canvas.toDataURL('image/jpeg', 0.8);
+  
+  const preview = $('profileAvatarPreview');
+  if (preview) {
+    preview.innerHTML = `<img src="${croppedB64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+    preview.setAttribute('data-b64', croppedB64);
+  }
+  
+  closeCropperModal();
+}
+
+function initCropperDragEvents() {
+  const vp = $('cropViewport');
+  if (!vp) return;
+  
+  const startDrag = (clientX, clientY) => {
+    isDraggingCrop = true;
+    dragStartX = clientX - cropX;
+    dragStartY = clientY - cropY;
+  };
+  
+  const moveDrag = (clientX, clientY) => {
+    if (!isDraggingCrop) return;
+    cropX = clientX - dragStartX;
+    cropY = clientY - dragStartY;
+    updateCropTransform();
+  };
+  
+  const endDrag = () => {
+    isDraggingCrop = false;
+  };
+  
+  vp.addEventListener('mousedown', e => {
+    startDrag(e.clientX, e.clientY);
+  });
+  window.addEventListener('mousemove', e => {
+    if (isDraggingCrop) {
+      moveDrag(e.clientX, e.clientY);
+    }
+  });
+  window.addEventListener('mouseup', endDrag);
+  
+  vp.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      startDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  });
+  vp.addEventListener('touchmove', e => {
+    if (isDraggingCrop && e.touches.length === 1) {
+      e.preventDefault();
+      moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: false });
+  vp.addEventListener('touchend', endDrag);
+  
+  const slider = $('cropZoomSlider');
+  if (slider) {
+    slider.addEventListener('input', function() {
+      const oldZoom = cropZoom;
+      cropZoom = parseFloat(this.value);
+      const vpCenter = 100;
+      cropX = vpCenter - (vpCenter - cropX) * (cropZoom / oldZoom);
+      cropY = vpCenter - (vpCenter - cropY) * (cropZoom / oldZoom);
+      updateCropTransform();
+    });
+  }
+}
+
+window.closeCropperModal = closeCropperModal;
+window.confirmCrop = confirmCrop;
+
 document.addEventListener('DOMContentLoaded', ()=>{
   initMainUI();
   const fileInput = $('avatarFileInput');
@@ -1291,19 +1583,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
       if(!file) return;
       const reader = new FileReader();
       reader.onloadend = () => {
-        const b64 = reader.result;
-        const preview = $('profileAvatarPreview');
-        if(preview){
-          preview.innerHTML = `<img src="${b64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-          preview.setAttribute('data-b64', b64);
-        }
-        // Also update topbar live
-        myAvatar = b64;
-        updateTopbar();
+        openCropper(reader.result);
       };
       reader.readAsDataURL(file);
     };
   }
+  initCropperDragEvents();
 });
 
 /* ═══════════════════════════════════════════
@@ -1757,10 +2042,10 @@ function openGroupChat(groupId, groupName) {
   }).catch(()=>{});
 }
 
-function appendGroupMsg(fromName, text, mine, voiceData, voiceMime) {
+function appendGroupMsg(fromName, text, mine, voiceData, voiceMime, id) {
   const chatMessages = document.getElementById('chatMessages');
   if (!chatMessages) return;
-  const m = { from: fromName, text, voiceData, voiceMime, ts: Date.now() };
+  const m = { id, from: fromName, text, voiceData, voiceMime, ts: Date.now() };
   const html = renderMsgHtml(m, true);
   const temp = document.createElement('div');
   temp.innerHTML = html.trim();
@@ -2178,6 +2463,62 @@ function clearVoicePreview() {
   if (attachBtn) attachBtn.classList.remove('hide');
   if (vnBtn) vnBtn.classList.remove('hide');
 }
+
+function hideSplashScreen() {
+  const splash = document.getElementById('splashScreen');
+  if (splash) {
+    splash.style.opacity = '0';
+    setTimeout(() => { splash.style.visibility = 'hidden'; }, 500);
+  }
+}
+
+/* ═══════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════ */
+(async()=>{
+  if (window.AndroidApp) {
+    try {
+      const appUser = window.AndroidApp.getUsername();
+      const appName = window.AndroidApp.getName();
+      const appRole = window.AndroidApp.getRole();
+      if (appUser && appName) {
+        localStorage.setItem('fc_user', appUser);
+        localStorage.setItem('fc_name', appName);
+        localStorage.setItem('fc_role', appRole || 'user');
+      }
+    } catch(e) {
+      console.error("AndroidApp sync error:", e);
+    }
+  }
+
+  const u=localStorage.getItem('fc_user'),n=localStorage.getItem('fc_name'),r=localStorage.getItem('fc_role')||'user';
+  if(u&&n){
+    try{
+      const res=await fetch(`${HTTP_URL}/api/user/${u}`);
+      if(res.ok){
+        connectApp(u,n,r);
+      } else if(res.status === 404 || res.status === 401){
+        localStorage.removeItem('fc_user');
+        localStorage.removeItem('fc_name');
+        localStorage.removeItem('fc_role');
+        if (window.AndroidApp) { try { window.AndroidApp.clearLogin(); } catch(e){} }
+        hideSplashScreen();
+      } else {
+        // Server or database error, keep login credentials and proceed
+        connectApp(u,n,r);
+      }
+    }catch(e){
+      // Network/offline errors, keep login credentials and proceed
+      console.warn("User validation check failed: offline or timeout", e);
+      connectApp(u,n,r);
+    }
+  } else {
+    // If not logged in, hide splash screen immediately
+    hideSplashScreen();
+  }
+  // Request notification permission
+  if('Notification' in window && Notification.permission==='default') Notification.requestPermission();
+})();
 
 /* ── Status Media & Text Updates ── */
 function triggerStatusFileInput() {
