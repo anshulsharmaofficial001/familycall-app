@@ -270,7 +270,7 @@ function handleMsg(msg) {
 
     case 'friend_request':
       loadContacts(); // refresh to show pending
-      showFriendRequestToast(msg.fromName || msg.from);
+      showFriendRequestNotif(msg.fromName || msg.from, msg.from);
       break;
 
     case 'friend_request_sent':
@@ -279,7 +279,8 @@ function handleMsg(msg) {
 
     case 'friend_accepted':
       loadContacts();
-      showToast('✅ ' + (msg.byName || msg.by) + ' is now your friend!');
+      showToast('✅ ' + (msg.byName || msg.by) + ' accepted your request! You are now friends 🎉');
+      showSystemNotif('Friend Request Accepted! 🎉', (msg.byName||msg.by) + ' is now your friend in FamilyCall');
       break;
 
     case 'friend_online':
@@ -764,16 +765,21 @@ async function loadContacts(){
 
     // Pending incoming
     if (pendingIn.length > 0) {
-      pendingDiv.innerHTML = `<div class="section-title">🔔 Friend Requests</div>` +
-        pendingIn.map(u => `
-          <div class="req-item">
-            <div class="contact-avatar" style="width:38px;height:38px;font-size:14px;margin-right:10px;flex-shrink:0">${u.name ? u.name.charAt(0).toUpperCase() : u.charAt(0).toUpperCase()}</div>
-            <div class="req-name">${u.name||u} <span style="font-size:11px;color:var(--text2)">@${u.username||u}</span></div>
-            <div class="req-btns">
-              <button class="req-accept" onclick="acceptFriend('${u.username||u}')">✓ Accept</button>
-              <button class="req-decline" onclick="declineFriend('${u.username||u}')">✕</button>
-            </div>
-          </div>`).join('');
+      pendingDiv.innerHTML = `<div class="section-title">🔔 Friend Requests (${pendingIn.length})</div>` +
+        pendingIn.map(u => {
+          const avatarContent = u.avatar
+            ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+            : `<span>${(u.username||u.name||'?').charAt(0).toUpperCase()}</span>`;
+          return `
+            <div class="req-item">
+              <div class="contact-avatar" style="width:38px;height:38px;font-size:14px;margin-right:10px;flex-shrink:0;overflow:hidden">${avatarContent}</div>
+              <div class="req-name">${u.name||u} <span style="font-size:11px;color:var(--text2)">@${u.username||u}</span></div>
+              <div class="req-btns">
+                <button class="req-accept" onclick="acceptFriend('${u.username||u}')">✓ Accept</button>
+                <button class="req-decline" onclick="declineFriend('${u.username||u}')">✕</button>
+              </div>
+            </div>`;
+        }).join('');
     } else {
       pendingDiv.innerHTML = '';
     }
@@ -785,35 +791,36 @@ async function loadContacts(){
     }
     $('noContacts').classList.add('hide');
 
-    list.innerHTML = `<div class="section-title">👨‍👩‍👧‍👦 Family & Friends</div>` +
+    list.innerHTML = `<div class="section-title">\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66 Family & Friends</div>` +
       friends.map(u => {
         const isCreator = u.role === 'superadmin';
         const avatarClass = isCreator ? 'contact-avatar creator-av' : 'contact-avatar';
+        // Profile pic > username first letter (not name)
         const avatarContent = u.avatar
-          ? `<img src="${u.avatar}" alt="${u.name}">`
-          : u.name.charAt(0).toUpperCase();
-        const creatorBadge = isCreator
-          ? `<span class="creator-badge">✦ Creator</span>` : '';
+          ? `<img src="${u.avatar}" alt="${u.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+          : `<span>${(u.username||'?').charAt(0).toUpperCase()}</span>`;
+        const creatorBadge = isCreator ? `<span class="creator-badge">\u2756 Creator</span>` : '';
         const statusText = u.online
-          ? `<span style="color:var(--green);font-weight:700">● Online</span>`
-          : `<span style="color:var(--text2)">○ Offline</span>`;
+          ? `<span style="color:var(--green);font-weight:700">\u25cf Online</span>`
+          : `<span style="color:var(--text2)">\u25cb Offline</span>`;
         const bat = batteryCache[u.username];
         const batPct = bat ? Math.round(bat.level*100) : null;
         const batColor = !bat ? '' : bat.charging ? '#4CAF50' : batPct>30 ? '#4CAF50' : batPct>15 ? '#FF9800' : '#F44336';
-        const batDot = bat ? `<span class="battery-dot" data-user="${u.username}" title="Battery: ${batPct}%${bat.charging?' ⚡':''}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${batColor};margin-left:4px"></span>` : '';
+        const batDot = bat ? `<span class="battery-dot" data-user="${u.username}" title="Battery: ${batPct}%${bat.charging?' \u26a1':''}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${batColor};margin-left:4px"></span>` : '';
+        const safeUser = u.username.replace(/'/g,"\\'");
+        const safeName = u.name.replace(/"/g,'&quot;').replace(/'/g,"\\'");
         return `
-          <div class="contact-item">
-            <div class="${avatarClass}" data-vsuser="${u.username}">
+          <div class="contact-item" onclick="openChat('${safeUser}','${safeName}')" style="cursor:pointer">
+            <div class="${avatarClass}" data-vsuser="${u.username}" style="overflow:hidden">
               ${avatarContent}
               <span class="status-dot ${u.online?'dot-on':'dot-off'}" data-user="${u.username}"></span>
             </div>
             <div class="contact-info">
               <div class="contact-name">${u.name} ${creatorBadge}${batDot}</div>
-              <div class="contact-sub">@${u.username} · ${statusText}</div>
+              <div class="contact-sub">@${u.username} \u00b7 ${statusText}</div>
             </div>
-            <div class="contact-actions">
-              <button class="action-btn chat-btn-sm" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">💬</button>
-              <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">📞</button>
+            <div class="contact-actions" onclick="event.stopPropagation()">
+              <button class="action-btn call-btn" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="startCall(this.dataset.username,this.dataset.name)">\ud83d\udcde</button>
             </div>
           </div>`;
       }).join('');
@@ -822,6 +829,7 @@ async function loadContacts(){
   }
   loadChatContacts();
 }
+
 
 async function searchUsers(q) {
   const resultDiv = $('searchResults');
@@ -839,28 +847,33 @@ async function searchUsers(q) {
         const creatorBadge = isCreator ? `<span class="creator-badge">✦ Creator</span>` : '';
         return `
           <div class="contact-item">
-            <div class="contact-avatar ${isCreator?'creator-av':''}">${avatarContent}</div>
+            <div class="contact-avatar ${isCreator?'creator-av':''}">
+              ${u.avatar
+                ? `<img src="${u.avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="${u.name}">`
+                : `<span>${(u.username||u.name||'?').charAt(0).toUpperCase()}</span>`
+              }
+            </div>
             <div class="contact-info">
               <div class="contact-name">${u.name} ${creatorBadge}</div>
               <div class="contact-sub">@${u.username}</div>
             </div>
             <div class="contact-actions">
-              <button class="action-btn add-btn" onclick="sendFriendRequest('${u.username}')">+ Add</button>
+              <button class="action-btn add-btn" id="addbtn-${u.username}" onclick="sendFriendRequest('${u.username}',this)">+ Add</button>
             </div>
           </div>`;
       }).join('');
   } catch(e) {}
 }
 
-function sendFriendRequest(toUsername) {
+function sendFriendRequest(toUsername, btnEl) {
+  if (btnEl) { btnEl.textContent = 'Requested'; btnEl.disabled = true; btnEl.style.background='#E2E8F0'; btnEl.style.color='#718096'; }
   fetch(`${HTTP_URL}/api/friend-request`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ from: myUsername, to: toUsername })
   }).then(r=>r.json()).then(r=>{
     if(r.success) showToast('Friend request sent to @'+toUsername);
-    else alert(r.error || 'Could not send request');
-    loadContacts();
-  }).catch(()=>alert('Error sending request'));
+    else { alert(r.error || 'Could not send request'); if(btnEl){btnEl.textContent='+ Add';btnEl.disabled=false;btnEl.style.background='';btnEl.style.color='';} }
+  }).catch(()=>{ alert('Error sending request'); if(btnEl){btnEl.textContent='+ Add';btnEl.disabled=false;} });
 }
 
 function acceptFriend(fromUsername) {
@@ -1240,6 +1253,46 @@ function showToast(message, duration=3500) {
   clearTimeout(t._to);
   t._to = setTimeout(() => { t.style.opacity = '0'; }, duration);
 }
+
+/* ── System Notification (push-style) ── */
+function showSystemNotif(title, body) {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    try { new Notification(title, { body, icon: '/icon.svg', badge: '/icon.svg', tag: 'fc-notif' }); } catch(e) {}
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(p => {
+      if (p === 'granted') {
+        try { new Notification(title, { body, icon: '/icon.svg', badge: '/icon.svg', tag: 'fc-notif' }); } catch(e) {}
+      }
+    });
+  }
+}
+
+/* ── Friend Request Notification (in-app banner + system notif) ── */
+function showFriendRequestNotif(fromName, fromUsername) {
+  // In-app banner (more prominent than toast)
+  let banner = document.getElementById('friendReqBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'friendReqBanner';
+    banner.style.cssText = 'position:fixed;top:70px;left:12px;right:12px;z-index:9998;font-family:Nunito,sans-serif;';
+    document.body.appendChild(banner);
+  }
+  banner.innerHTML = `
+    <div style="background:linear-gradient(135deg,#4A90D9,#2C6FAC);color:#fff;border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 20px rgba(74,144,217,0.4);animation:slideDown .3s ease">
+      <div style="width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">👤</div>
+      <div style="flex:1">
+        <div style="font-weight:800;font-size:14px">${fromName} sent you a friend request!</div>
+        <div style="font-size:11px;opacity:.85">Go to contacts to accept or decline</div>
+      </div>
+      <button onclick="this.closest('#friendReqBanner').innerHTML=''" style="background:rgba(255,255,255,0.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>`;
+  setTimeout(() => { if (banner) banner.innerHTML = ''; }, 8000);
+  // System notification
+  showSystemNotif('🔔 New Friend Request', fromName + ' wants to connect with you on FamilyCall');
+}
+
+
 
 /* ── Battery Monitoring ── */
 async function startBatteryMonitor() {
