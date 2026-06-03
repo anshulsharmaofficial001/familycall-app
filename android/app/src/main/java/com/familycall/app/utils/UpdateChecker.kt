@@ -83,7 +83,8 @@ object UpdateChecker {
 
     private fun downloadAndInstall(activity: Activity, apkUrl: String, versionName: String) {
         val fileName = "FamilyCall_v${versionName}.apk"
-        val apkFile = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
+        val apkFile = File(activity.cacheDir, fileName)
+        apkFile.parentFile?.mkdirs()
         if (apkFile.exists()) apkFile.delete()
 
         activity.runOnUiThread {
