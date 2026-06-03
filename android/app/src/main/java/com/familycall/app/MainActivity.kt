@@ -1,186 +1,151 @@
 package com.familycall.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.GeolocationPermissions
+import android.webkit.ValueCallback
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.familycall.app.databinding.ActivityMainBinding
-import com.familycall.app.signaling.ServerClient
-import com.familycall.app.signaling.UserInfo
 import com.familycall.app.utils.UpdateChecker
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.textfield.TextInputEditText
-import org.json.JSONObject
+import com.familycall.app.utils.Constants
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var serverClient: ServerClient
-    private lateinit var adapter: ContactsAdapter
-    private var contacts = mutableListOf<UserInfo>()
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setSupportActionBar(binding.toolbar)
-        serverClient = ServerClient.getInstance()
-
-        // Show creator badge if superadmin
-        if (FamilyCallApp.currentRole == "superadmin") {
-            supportActionBar?.title = "✦ Anshul Sharma — Creator"
-        } else {
-            supportActionBar?.title = "FamilyCall — ${FamilyCallApp.currentUserName}"
-        }
-
-        // Check for updates on startup (silent, non-blocking)
+        // Check for updates on startup
         UpdateChecker.checkForUpdate(this)
 
-        adapter = ContactsAdapter(contacts,
-            onCallClick = { contact -> initiateCall(contact) },
-            onChatClick = { contact -> openChat(contact) }
+        requestAppPermissions()
+    }
+
+    private fun requestAppPermissions() {
+        val permissions = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
         )
-        binding.contactsRecycler.layoutManager = LinearLayoutManager(this)
-        binding.contactsRecycler.adapter = adapter
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
-        binding.addContactFab.setOnClickListener {
-            val options = arrayOf("Add Family Member", "Call via Link (No App Needed)")
-            MaterialAlertDialogBuilder(this)
-                .setTitle("Choose Action")
-                .setItems(options) { _, which ->
-                    when (which) {
-                        0 -> showAddContactDialog()
-                        1 -> showCallViaLinkDialog()
-                    }
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), 100)
+        } else {
+            initWebView()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 100) {
+            initWebView()
+        }
+    }
+
+    private fun initWebView() {
+        val webView = binding.webView
+        val settings = webView.settings
+        
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.databaseEnabled = true
+        settings.mediaPlaybackRequiresUserGesture = false
+        settings.setGeolocationEnabled(true)
+        settings.cacheMode = WebSettings.LOAD_DEFAULT
+        
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                if (url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+                    view?.loadUrl(url)
+                    return true
                 }
-                .show()
+                return false
+            }
         }
 
-        connectToServer()
-        loadContacts()
-        listenForIncomingCalls()
-    }
-
-    private fun connectToServer() {
-        val username = FamilyCallApp.currentUsername
-        val name = FamilyCallApp.currentUserName
-        if (username.isEmpty()) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
-        serverClient.connectWebSocket(username, name)
-    }
-
-    private fun listenForIncomingCalls() {
-        serverClient.setMessageListener { json ->
-            val type = json.optString("type")
-            if (type == "incoming_call") {
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onPermissionRequest(request: PermissionRequest?) {
                 runOnUiThread {
-                    val intent = Intent(this, IncomingCallActivity::class.java).apply {
-                        putExtra("callId", json.optString("callId"))
-                        putExtra("callerName", json.optString("callerName"))
-                        putExtra("callerUsername", json.optString("callerUsername"))
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    startActivity(intent)
+                    request?.grant(request?.resources ?: arrayOf())
                 }
             }
-        }
-    }
 
-    private fun loadContacts() {
-        serverClient.getAllUsers { users ->
-            runOnUiThread {
-                val myUsername = FamilyCallApp.currentUsername
-                contacts.clear()
-                contacts.addAll(users.filter { it.username != myUsername })
-                adapter.updateContacts(contacts)
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?
+            ) {
+                callback?.invoke(origin, true, false)
+            }
 
-                if (contacts.isEmpty()) {
-                    binding.emptyText.visibility = android.view.View.VISIBLE
-                    binding.contactsRecycler.visibility = android.view.View.GONE
-                } else {
-                    binding.emptyText.visibility = android.view.View.GONE
-                    binding.contactsRecycler.visibility = android.view.View.VISIBLE
-                }            }
-        }
-    }
+            override fun onShowFileChooser(
+                webView: WebView?,
+                filePathCallback: ValueCallback<Array<Uri>>?,
+                fileChooserParams: FileChooserParams?
+            ): Boolean {
+                this@MainActivity.filePathCallback?.onReceiveValue(null)
+                this@MainActivity.filePathCallback = filePathCallback
 
-    private fun showAddContactDialog() {
-        val input = TextInputEditText(this).apply {
-            hint = "Enter username"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Add Family Member")
-            .setMessage("Enter their username")
-            .setView(input)
-            .setPositiveButton("Add") { _, _ ->
-                val username = input.text.toString().trim().lowercase()
-                if (username.isNotEmpty()) {
-                    serverClient.getUserByUsername(username) { user ->
-                        runOnUiThread {
-                            if (user != null) {
-                                Toast.makeText(this, "${user.name} added!", Toast.LENGTH_SHORT).show()
-                                loadContacts()
-                            } else {
-                                Toast.makeText(this, "User not found. Ask them to install FamilyCall first!", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
+                val intent = fileChooserParams?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type = "image/*"
+                    addCategory(Intent.CATEGORY_OPENABLE)
                 }
+
+                try {
+                    startActivityForResult(intent, 1001)
+                } catch (e: Exception) {
+                    this@MainActivity.filePathCallback = null
+                    return false
+                }
+                return true
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
+
+        webView.loadUrl(Constants.SERVER_URL)
     }
 
-    private fun showCallViaLinkDialog() {
-        val input = TextInputEditText(this).apply {
-            hint = "Who are you calling?"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001) {
+            if (filePathCallback == null) return
+            val results = WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+            filePathCallback?.onReceiveValue(results)
+            filePathCallback = null
         }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Call via Link")
-            .setMessage("Send a call link via WhatsApp. Receiver just needs internet + Chrome.")
-            .setView(input)
-            .setPositiveButton("Generate Link") { _, _ ->
-                val name = input.text.toString().trim().ifEmpty { "Family Member" }
-                callViaLink(name)
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
     }
 
-    private fun initiateCall(contact: UserInfo) {
-        val intent = Intent(this, CallActivity::class.java).apply {
-            putExtra("calleeUsername", contact.username)
-            putExtra("calleeName", contact.name)
-            putExtra("isCaller", true)
-            putExtra("isWebCall", false)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    override fun onBackPressed() {
+        val webView = binding.webView
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
         }
-        startActivity(intent)
-    }
-
-    private fun openChat(contact: UserInfo) {
-        val intent = Intent(this, ChatActivity::class.java).apply {
-            putExtra("chatUsername", contact.username)
-            putExtra("chatName", contact.name)
-        }
-        startActivity(intent)
-    }
-
-    private fun callViaLink(name: String) {
-        val intent = Intent(this, CallActivity::class.java).apply {
-            putExtra("calleeName", name)
-            putExtra("isCaller", true)
-            putExtra("isWebCall", true)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
     }
 }
