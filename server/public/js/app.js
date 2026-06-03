@@ -2535,6 +2535,12 @@ function hideSplashScreen() {
   if (_splashHidden) return;
   _splashHidden = true;
 
+  // Cancel the HTML-level failsafe timer (we'll handle it smoothly here)
+  if (window.__splashFailsafeTimer) {
+    clearTimeout(window.__splashFailsafeTimer);
+    window.__splashFailsafeTimer = null;
+  }
+
   const splash = document.getElementById('splashScreen');
   if (!splash) return;
 
