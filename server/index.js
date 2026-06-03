@@ -92,10 +92,10 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 21,
-    versionName: '4.7',
+    versionCode: 22,
+    versionName: '4.8',
     apkUrl: 'https://familycall-server-tpyh.onrender.com/FamilyCall-latest.apk',
-    releaseNotes: 'WhatsApp-style chats overhauled: splash screen, read tick status icons, real-time typing indicators, circular profile image cropper, call timers, busy status, and native login persistence!'
+    releaseNotes: 'Bumps version to 4.8. Smooths animations and transitions, fixes splash screen getting stuck, and preserves local/native session logging!'
   });
 });
 

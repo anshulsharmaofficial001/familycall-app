@@ -200,8 +200,33 @@ onClick('logoutBtn', () => {
 /* ═══════════════════════════════════════════
    WEBSOCKET
 ═══════════════════════════════════════════ */
+let reconnectTimeout = null;
+function reconnectWS() {
+  if (!myUsername) return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  console.log("WebSocket reconnecting...");
+  ws = new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(myUsername)}&name=${encodeURIComponent(myName)}`);
+  ws.onopen = () => {
+    slog('ws_open',{});
+    updateTopbar();
+    loadContacts();
+    hideSplashScreen();
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(loadContacts, 8000);
+  };
+  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+  ws.onclose = () => {
+    slog('ws_close',{});
+    if (refreshInterval) clearInterval(refreshInterval);
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(reconnectWS, 5000);
+  };
+}
+
 function connectApp(username, name, role) {
   myUsername=username; myName=name; myRole=role||'user';
+  hideSplashScreen(); // Exit splash screen immediately on connect
+  
   const AC = window.AudioContext || window.webkitAudioContext;
   slog('client_ready',{ua:navigator.userAgent, audioWorklet:!!(AC&&AC.prototype&&('audioWorklet' in AC.prototype))});
   $('loginPage').classList.add('hide'); $('registerPage').classList.add('hide'); $('mainPage').classList.remove('hide');
@@ -216,11 +241,24 @@ function connectApp(username, name, role) {
     startLocationTracking();
     loadGroups();
   }).catch(()=>{ updateTopbar(); });
+  
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
-  ws.onopen=()=>{slog('ws_open',{});updateTopbar();loadContacts();hideSplashScreen();refreshInterval=setInterval(loadContacts,8000);};
+  ws.onopen=()=>{
+    slog('ws_open',{});
+    updateTopbar();
+    loadContacts();
+    hideSplashScreen();
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval=setInterval(loadContacts,8000);
+  };
   initSOSButton();
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
-  ws.onclose=()=>{slog('ws_close',{});if(refreshInterval)clearInterval(refreshInterval);setTimeout(()=>location.reload(),2000);};
+  ws.onclose=()=>{
+    slog('ws_close',{});
+    if (refreshInterval) clearInterval(refreshInterval);
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(reconnectWS, 5000);
+  };
 }
 
 function handleMsg(msg) {
@@ -2499,8 +2537,8 @@ function hideSplashScreen() {
     const minDelay = 1500; // 1.5 seconds
     const remaining = Math.max(0, minDelay - elapsed);
     setTimeout(() => {
-      splash.style.opacity = '0';
-      setTimeout(() => { splash.style.visibility = 'hidden'; }, 500);
+      splash.style.pointerEvents = 'none';
+      splash.classList.add('hide-splash');
     }, remaining);
   }
 }
@@ -2509,65 +2547,83 @@ function hideSplashScreen() {
    INIT
    ═══════════════════════════════════════════ */
 (async()=>{
-  // Wait up to 300ms for AndroidApp bridge to be injected
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  if (isAndroid && !window.AndroidApp) {
-    for (let i = 0; i < 6; i++) {
-      await new Promise(r => setTimeout(r, 50));
-      if (window.AndroidApp) break;
+  try {
+    // Wait up to 500ms for AndroidApp bridge to be injected
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (isAndroid && !window.AndroidApp) {
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 50));
+        if (window.AndroidApp) break;
+      }
     }
-  }
 
-  if (window.AndroidApp) {
-    try {
-      const appUser = window.AndroidApp.getUsername();
-      const appName = window.AndroidApp.getName();
-      const appRole = window.AndroidApp.getRole();
-      if (appUser && appName) {
-        localStorage.setItem('fc_user', appUser);
-        localStorage.setItem('fc_name', appName);
-        localStorage.setItem('fc_role', appRole || 'user');
-      } else {
-        // Sync local storage to Android SharedPrefs if present
-        const u = localStorage.getItem('fc_user');
-        const n = localStorage.getItem('fc_name');
-        const r = localStorage.getItem('fc_role') || 'user';
-        if (u && n) {
-          try { window.AndroidApp.saveLogin(u, n, r); } catch(e){}
+    if (window.AndroidApp) {
+      try {
+        const appUser = window.AndroidApp.getUsername();
+        const appName = window.AndroidApp.getName();
+        const appRole = window.AndroidApp.getRole();
+        if (appUser && appName) {
+          localStorage.setItem('fc_user', appUser);
+          localStorage.setItem('fc_name', appName);
+          localStorage.setItem('fc_role', appRole || 'user');
+        } else {
+          // Sync local storage to Android SharedPrefs if present
+          const u = localStorage.getItem('fc_user');
+          const n = localStorage.getItem('fc_name');
+          const r = localStorage.getItem('fc_role') || 'user';
+          if (u && n) {
+            try { window.AndroidApp.saveLogin(u, n, r); } catch(e){}
+          }
         }
+      } catch(e) {
+        console.error("AndroidApp sync error:", e);
       }
-    } catch(e) {
-      console.error("AndroidApp sync error:", e);
     }
-  }
 
-  const u=localStorage.getItem('fc_user'),n=localStorage.getItem('fc_name'),r=localStorage.getItem('fc_role')||'user';
-  if(u&&n){
-    try{
-      const res=await fetch(`${HTTP_URL}/api/user/${u}`);
-      if(res.ok){
-        connectApp(u,n,r);
-      } else if(res.status === 404 || res.status === 401){
-        localStorage.removeItem('fc_user');
-        localStorage.removeItem('fc_name');
-        localStorage.removeItem('fc_role');
-        if (window.AndroidApp) { try { window.AndroidApp.clearLogin(); } catch(e){} }
-        hideSplashScreen();
-      } else {
-        // Server or database error, keep login credentials and proceed
-        connectApp(u,n,r);
-      }
-    }catch(e){
-      // Network/offline errors, keep login credentials and proceed
-      console.warn("User validation check failed: offline or timeout", e);
-      connectApp(u,n,r);
+    const u = localStorage.getItem('fc_user');
+    const n = localStorage.getItem('fc_name');
+    const r = localStorage.getItem('fc_role') || 'user';
+
+    if (u && n) {
+      // Login immediately to show the app and hide splash screen
+      connectApp(u, n, r);
+
+      // Perform user validation check in the background
+      fetch(`${HTTP_URL}/api/user/${u}`)
+        .then(res => {
+          if (!res.ok && (res.status === 404 || res.status === 401)) {
+            console.warn("User validation check failed: logging out invalid user.");
+            localStorage.removeItem('fc_user');
+            localStorage.removeItem('fc_name');
+            localStorage.removeItem('fc_role');
+            if (window.AndroidApp) { try { window.AndroidApp.clearLogin(); } catch(e){} }
+            // Force user back to login page
+            myUsername = '';
+            if (ws) {
+              try { ws.close(); } catch(e){}
+            }
+            $('mainPage').classList.add('hide');
+            $('loginPage').classList.remove('hide');
+          }
+        })
+        .catch(err => {
+          console.warn("Background user validation check failed (offline or timeout):", err);
+        });
+    } else {
+      // If not logged in, hide splash screen immediately
+      hideSplashScreen();
     }
-  } else {
-    // If not logged in, hide splash screen immediately
+  } catch (err) {
+    console.error("Critical error in startup init flow:", err);
     hideSplashScreen();
   }
+
   // Request notification permission
-  if('Notification' in window && Notification.permission==='default') Notification.requestPermission();
+  try {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  } catch(e){}
 })();
 
 /* ── Status Media & Text Updates ── */
