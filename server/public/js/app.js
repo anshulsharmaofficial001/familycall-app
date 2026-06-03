@@ -2283,8 +2283,19 @@ function closePauseLocationModal() {
       const res=await fetch(`${HTTP_URL}/api/user/${u}`);
       if(res.ok){
         connectApp(u,n,r);
-      } else{ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
-    }catch(e){ localStorage.removeItem('fc_user');localStorage.removeItem('fc_name');localStorage.removeItem('fc_role'); }
+      } else if(res.status === 404 || res.status === 401){
+        localStorage.removeItem('fc_user');
+        localStorage.removeItem('fc_name');
+        localStorage.removeItem('fc_role');
+      } else {
+        // Server or database error, keep login credentials and proceed
+        connectApp(u,n,r);
+      }
+    }catch(e){
+      // Network/offline errors, keep login credentials and proceed
+      console.warn("User validation check failed: offline or timeout", e);
+      connectApp(u,n,r);
+    }
   }
   // Request notification permission
   if('Notification' in window && Notification.permission==='default') Notification.requestPermission();

@@ -91,10 +91,10 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 19,
-    versionName: '4.5',
+    versionCode: 20,
+    versionName: '4.6',
     apkUrl: 'https://familycall-server-tpyh.onrender.com/FamilyCall-latest.apk',
-    releaseNotes: 'New features: WhatsApp-style chats ordering with snippets & timestamps, selective group creation checklists, and pause location duration options (20/40/60min)!'
+    releaseNotes: 'Fixed login persistence issue when swiped from recents/offline launch, and updated version to v4.6!'
   });
 });
 
