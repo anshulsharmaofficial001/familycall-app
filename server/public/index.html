@@ -255,7 +255,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
       <button class="feat-btn" onclick="openVoiceStatusModal()">🎙️ Status</button>
       <button class="feat-btn" id="sosBtn" style="background:#FFEBEE;color:#C62828;border-color:#EF9A9A">🆘 SOS</button>
       <button class="feat-btn" onclick="openGroupsModal()">👨‍👩‍👧‍👦 Groups</button>
-      <button class="feat-btn" onclick="pauseLocationTracking(60)">⏸️ Pause</button>
+      <button class="feat-btn" onclick="openPauseLocationModal()">⏸️ Pause</button>
       <button class="feat-btn" id="adminPanelBtn" onclick="openAdminPanel()" style="display:none;background:linear-gradient(135deg,#FFD700,#FFA500);color:#7B4F00;border-color:#FFD700;font-weight:800">👑 Admin</button>
     </div>
     <div id="searchResults"></div>
@@ -500,13 +500,28 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 <div id="groupsModal" class="modal-overlay hide">
   <div class="modal-card">
     <h3>👨‍👩‍👧‍👦 Family Groups</h3>
-    <div id="groupsList" style="margin:12px 0"></div>
+    <div id="groupsList" style="margin:12px 0;max-height:150px;overflow-y:auto"></div>
     <div style="border-top:1px solid #EDF2F7;padding-top:14px;margin-top:8px">
       <p style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:8px">Create New Group</p>
       <input id="newGroupName" class="search-input" placeholder="Group name (e.g. My Family)" style="margin-bottom:8px">
+      <div id="groupMembersCheckboxList" style="margin-bottom:12px;max-height:120px;overflow-y:auto;border:1px solid #EDF2F7;border-radius:8px;padding:8px;text-align:left"></div>
       <button class="main-btn" onclick="createGroup()">+ Create Group</button>
     </div>
     <button class="cancel-btn" style="margin-top:10px" onclick="document.getElementById('groupsModal').classList.add('hide')">Close</button>
+  </div>
+</div>
+
+<!-- Pause Location Modal -->
+<div id="pauseLocationModal" class="modal-overlay hide" style="z-index:999">
+  <div class="modal-card" style="max-width:320px;text-align:center">
+    <h3 style="margin-top:0">📍 Pause Location Sharing</h3>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Choose how long to pause sharing your location with family:</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+      <button type="button" onclick="pauseLocationTracking(20);closePauseLocationModal()" class="main-btn" style="background:#FFF3E0;color:#E65100;border:1px solid #FFE0B2;outline:none">⏸️ Pause for 20 Min</button>
+      <button type="button" onclick="pauseLocationTracking(40);closePauseLocationModal()" class="main-btn" style="background:#FFF3E0;color:#E65100;border:1px solid #FFE0B2;outline:none">⏸️ Pause for 40 Min</button>
+      <button type="button" onclick="pauseLocationTracking(60);closePauseLocationModal()" class="main-btn" style="background:#FFF3E0;color:#E65100;border:1px solid #FFE0B2;outline:none">⏸️ Pause for 60 Min</button>
+    </div>
+    <button type="button" onclick="closePauseLocationModal()" class="cancel-btn">Cancel</button>
   </div>
 </div>
 

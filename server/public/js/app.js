@@ -964,19 +964,54 @@ function loadChatContacts(){
   fetch(`${HTTP_URL}/api/friends/${myUsername}`).then(r=>r.json()).then(data=>{
     const friends = data.friends || [];
     fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r=>r.json()).then(msgs=>{
+      // Sort friends by last message timestamp (most recent first)
+      friends.sort((a, b) => {
+        const msgsA = msgs[a.username] || [];
+        const msgsB = msgs[b.username] || [];
+        const tsA = msgsA.length ? (msgsA[msgsA.length - 1].ts || 0) : 0;
+        const tsB = msgsB.length ? (msgsB[msgsB.length - 1].ts || 0) : 0;
+        return tsB - tsA;
+      });
+
       $('chatContactsList').innerHTML = friends.length === 0
         ? '<div class="empty-state"><div class="empty-icon">💬</div><p>No friends yet</p><small>Add family members first!</small></div>'
         : `<div class="section-title">💬 Messages</div>` + friends.map(u=>{
-            const avatarContent = u.avatar ? `<img src="${u.avatar}" alt="${u.name}">` : u.name.charAt(0).toUpperCase();
-            const msgCount = msgs[u.username] ? msgs[u.username].length : 0;
+            const avatarContent = u.avatar ? `<img src="${u.avatar}" alt="${u.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : u.name.charAt(0).toUpperCase();
+            
+            const userMsgs = msgs[u.username] || [];
+            const lastMsg = userMsgs[userMsgs.length - 1];
+            
+            let lastMsgText = 'Say hello! 👋';
+            let lastMsgTime = '';
+            
+            if (lastMsg) {
+              lastMsgTime = lastMsg.ts ? new Date(lastMsg.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+              if (lastMsg.voiceMime) {
+                const mime = lastMsg.voiceMime;
+                if (mime.startsWith('audio/')) lastMsgText = '🎤 Voice Note';
+                else if (mime.startsWith('image/')) lastMsgText = '🖼️ Photo';
+                else if (mime.startsWith('video/')) lastMsgText = '🎥 Video';
+                else if (mime === 'location') lastMsgText = '📍 Location';
+                else if (mime === 'contact') lastMsgText = '👤 Contact Card';
+                else lastMsgText = `📄 ${lastMsg.text || 'Document'}`;
+              } else {
+                lastMsgText = lastMsg.text || '';
+              }
+            }
+            
             return `
-              <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
-                <div class="contact-avatar ${u.role==='superadmin'?'creator-av':''}">${avatarContent}</div>
-                <div class="contact-info">
-                  <div class="contact-name">${u.name}</div>
-                  <div class="contact-sub">${msgCount ? msgCount+' messages' : 'Say hello! 👋'}</div>
+              <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)" style="cursor:pointer;padding:12px 16px;border-bottom:1px solid #EDF2F7;display:flex;align-items:center;gap:12px">
+                <div class="contact-avatar ${u.role==='superadmin'?'creator-av':''}" style="width:48px;height:48px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));flex-shrink:0;position:relative">
+                  ${avatarContent}
+                  <span class="status-dot ${u.online?'dot-on':'dot-off'}" data-user="${u.username}" style="position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;border:2px solid #fff"></span>
                 </div>
-                <div style="color:var(--text2);font-size:22px">›</div>
+                <div class="contact-info" style="flex:1;min-width:0">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <div class="contact-name" style="font-weight:800;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
+                    <div style="font-size:11px;color:var(--text2);font-weight:600">${lastMsgTime}</div>
+                  </div>
+                  <div class="contact-sub" style="font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${escHtml(lastMsgText)}</div>
+                </div>
               </div>`;
           }).join('');
     });
@@ -1845,14 +1880,36 @@ function openVoiceStatusModal() {
 
 function openGroupsModal() {
   const modal = document.getElementById('groupsModal');
-  if (modal) { modal.classList.remove('hide'); loadGroups(); }
+  if (modal) {
+    modal.classList.remove('hide');
+    loadGroups();
+    
+    // Populate member selector checkboxes
+    const cbList = document.getElementById('groupMembersCheckboxList');
+    if (cbList) {
+      if (friendsCache.length === 0) {
+        cbList.innerHTML = '<p style="font-size:11px;color:var(--text2);margin:0">Add friends first to form a group.</p>';
+      } else {
+        cbList.innerHTML = friendsCache.map(f => `
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:3px 0;margin:0;font-weight:600">
+            <input type="checkbox" class="group-select-member-cb" value="${f.username}">
+            <span>${f.name} (@${f.username})</span>
+          </label>
+        `).join('');
+      }
+    }
+  }
 }
 
 async function createGroup() {
   const nameInput = document.getElementById('newGroupName');
   const name = nameInput ? nameInput.value.trim() : '';
   if (!name) { alert('Enter group name'); return; }
-  const members = friendsCache.map(f=>f.username);
+  
+  // Get checked member usernames
+  const cbs = document.querySelectorAll('.group-select-member-cb:checked');
+  const members = Array.from(cbs).map(cb => cb.value);
+  
   try {
     const r = await fetch(`${HTTP_URL}/api/groups/create`, {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -1862,6 +1919,7 @@ async function createGroup() {
       showToast('✅ Group created!');
       if (nameInput) nameInput.value = '';
       loadGroups();
+      cbs.forEach(cb => cb.checked = false);
     }
   } catch(e) { alert('Error creating group'); }
 }
@@ -2199,6 +2257,18 @@ function closeStatusViewer() {
     statusAudioElement.src = '';
     statusAudioElement = null;
   }
+}
+
+
+
+function openPauseLocationModal() {
+  const modal = document.getElementById('pauseLocationModal');
+  if (modal) modal.classList.remove('hide');
+}
+
+function closePauseLocationModal() {
+  const modal = document.getElementById('pauseLocationModal');
+  if (modal) modal.classList.add('hide');
 }
 
 
