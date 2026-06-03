@@ -2529,24 +2529,42 @@ function clearVoicePreview() {
 }
 
 window.splashStartTime = Date.now();
+let _splashHidden = false;
 
 function hideSplashScreen() {
+  if (_splashHidden) return;
+  _splashHidden = true;
+
   const splash = document.getElementById('splashScreen');
-  if (splash) {
-    const elapsed = Date.now() - (window.splashStartTime || Date.now());
-    const minDelay = 1500; // 1.5 seconds
-    const remaining = Math.max(0, minDelay - elapsed);
+  if (!splash) return;
+
+  const elapsed = Date.now() - (window.splashStartTime || Date.now());
+  const minDelay = 1500;
+  const remaining = Math.max(0, minDelay - elapsed);
+
+  setTimeout(() => {
+    // Step 1: disable pointer events immediately so UI is responsive
+    splash.style.pointerEvents = 'none';
+    splash.style.transition = 'opacity 0.6s ease, visibility 0.6s';
+    splash.style.opacity = '0';
+    splash.style.visibility = 'hidden';
+    splash.classList.add('hide-splash');
+
+    // Step 2: after transition, forcibly remove from DOM so it CANNOT block UI
     setTimeout(() => {
-      splash.style.pointerEvents = 'none';
-      splash.classList.add('hide-splash');
-    }, remaining);
-  }
+      splash.style.display = 'none';
+      if (splash.parentNode) splash.parentNode.removeChild(splash);
+    }, 700);
+  }, remaining);
 }
 
 /* ═══════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════ */
 (async()=>{
+  // FAILSAFE: no matter what happens, kill splash after 5 seconds
+  setTimeout(() => { hideSplashScreen(); }, 5000);
+
   try {
     // Wait up to 500ms for AndroidApp bridge to be injected
     const isAndroid = /Android/i.test(navigator.userAgent);

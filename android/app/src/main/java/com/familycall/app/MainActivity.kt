@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
         settings.allowContentAccess = true
         settings.mediaPlaybackRequiresUserGesture = false
         settings.setGeolocationEnabled(true)
-        settings.cacheMode = WebSettings.LOAD_DEFAULT
+        settings.cacheMode = WebSettings.LOAD_NO_CACHE
         
         webView.addJavascriptInterface(WebAppInterface(this), "AndroidApp")
         
