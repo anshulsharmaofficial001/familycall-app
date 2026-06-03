@@ -11,8 +11,8 @@ android {
         applicationId = "com.familycall.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 22
-        versionName = "4.8"
+        versionCode = 23
+        versionName = "4.9"
     }
 
     buildTypes {
