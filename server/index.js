@@ -20,6 +20,11 @@ const noStoreJs = (file) => (req, res) => {
 app.get('/js/app.js', noStoreJs('app.js'));
 app.get('/js/pcm-recorder.js', noStoreJs('pcm-recorder.js'));
 app.get('/js/audio-processor.js', noStoreJs('audio-processor.js'));
+app.get('/sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory: online status + WS refs + active calls
@@ -86,9 +91,9 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 14,
-    versionName: '4.0',
-    apkUrl: 'https://github.com/anshulsharmaofficial001/familycall-app/releases/download/v4.0/FamilyCall-latest.apk',
+    versionCode: 15,
+    versionName: '4.1',
+    apkUrl: 'https://familycall-server-tpyh.onrender.com/FamilyCall-latest.apk',
     releaseNotes: 'New features: Groups, SOS, Live Location, Voice Status, Battery Monitor, Birthday Alerts, Auto-update!'
   });
 });

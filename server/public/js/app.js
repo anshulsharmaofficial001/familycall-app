@@ -21,6 +21,8 @@ let ringCtx = null, ringGain = null, ringOsc = null, ringing = false;
 /* State */
 let callerInfoStore = {name:'',username:'',avatar:null};
 let friendsCache = [];
+let pendingInCache = [];
+let pendingOutCache = [];
 let myGroupsCache = [];
 let batteryCache = {}; // username -> level
 let locationWatchId = null;
@@ -759,6 +761,8 @@ async function loadContacts(){
     const pendingIn = data.pendingIn || [];
     const pendingOut = data.pendingOut || [];
     friendsCache = friends;
+    pendingInCache = pendingIn;
+    pendingOutCache = pendingOut;
 
     const list = $('contactsList');
     const pendingDiv = $('pendingRequests');
@@ -843,8 +847,24 @@ async function searchUsers(q) {
     resultDiv.innerHTML = `<div class="section-title">🔍 Search Results</div>` +
       results.map(u => {
         const isCreator = u.role==='superadmin';
-        const avatarContent = u.avatar ? `<img src="${u.avatar}" alt="${u.name}">` : u.name.charAt(0).toUpperCase();
         const creatorBadge = isCreator ? `<span class="creator-badge">✦ Creator</span>` : '';
+        
+        let actionHtml = '';
+        const isSelf = u.username === myUsername;
+        const isFriend = friendsCache.some(f => f.username === u.username);
+        const isPendingOut = pendingOutCache.some(f => f.username === u.username);
+        const isPendingIn = pendingInCache.some(f => f.username === u.username);
+
+        if (isSelf) {
+          actionHtml = `<span style="color:var(--text2);font-size:13px">You</span>`;
+        } else if (isFriend) {
+          actionHtml = `<span style="color:var(--text2);font-size:13px;font-weight:700">Friends</span>`;
+        } else if (isPendingOut || isPendingIn) {
+          actionHtml = `<button class="action-btn add-btn" style="background:#E2E8F0;color:#718096" disabled>Pending</button>`;
+        } else {
+          actionHtml = `<button class="action-btn add-btn" id="addbtn-${u.username}" onclick="sendFriendRequest('${u.username}',this)">+ Add</button>`;
+        }
+
         return `
           <div class="contact-item">
             <div class="contact-avatar ${isCreator?'creator-av':''}">
@@ -858,7 +878,7 @@ async function searchUsers(q) {
               <div class="contact-sub">@${u.username}</div>
             </div>
             <div class="contact-actions">
-              <button class="action-btn add-btn" id="addbtn-${u.username}" onclick="sendFriendRequest('${u.username}',this)">+ Add</button>
+              ${actionHtml}
             </div>
           </div>`;
       }).join('');

@@ -16,6 +16,11 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import android.widget.ProgressBar
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import android.view.Gravity
 
 object UpdateChecker {
 
@@ -77,72 +82,95 @@ object UpdateChecker {
     }
 
     private fun downloadAndInstall(activity: Activity, apkUrl: String, versionName: String) {
-        try {
-            val fileName = "FamilyCall_v${versionName}.apk"
-            val downloadManager = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val fileName = "FamilyCall_v${versionName}.apk"
+        val apkFile = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
+        if (apkFile.exists()) apkFile.delete()
 
-            // Remove old APK if exists
-            val oldFile = File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileName)
-            if (oldFile.exists()) oldFile.delete()
-
-            val request = DownloadManager.Request(Uri.parse(apkUrl)).apply {
-                setTitle("FamilyCall Update")
-                setDescription("Downloading v$versionName...")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setDestinationInExternalFilesDir(
-                    activity,
-                    Environment.DIRECTORY_DOWNLOADS,
-                    fileName
-                )
-                setAllowedOverMetered(true)
-                setAllowedOverRoaming(true)
+        activity.runOnUiThread {
+            val padding = (24 * activity.resources.displayMetrics.density).toInt()
+            val layout = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(padding, padding, padding, padding)
             }
+            val progressBar = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                isIndeterminate = false
+                max = 100
+                progress = 0
+            }
+            val progressText = TextView(activity).apply {
+                text = "Starting download..."
+                textSize = 14f
+                setPadding(0, (12 * activity.resources.displayMetrics.density).toInt(), 0, 0)
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            layout.addView(progressBar)
+            layout.addView(progressText)
 
-            val downloadId = downloadManager.enqueue(request)
+            val dialog = AlertDialog.Builder(activity)
+                .setTitle("Updating FamilyCall")
+                .setMessage("Downloading version v$versionName. Please keep the app open.")
+                .setView(layout)
+                .setCancelable(false)
+                .create()
 
-            // Listen for download completion
-            val receiver = object : BroadcastReceiver() {
-                override fun onReceive(context: Context?, intent: Intent?) {
-                    val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                    if (id == downloadId) {
-                        activity.unregisterReceiver(this)
-                        val apkFile = File(
-                            activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                            fileName
-                        )
-                        if (apkFile.exists()) {
-                            installApk(activity, apkFile)
+            dialog.show()
+
+            Thread {
+                try {
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(15, TimeUnit.SECONDS)
+                        .readTimeout(30, TimeUnit.SECONDS)
+                        .build()
+
+                    val request = Request.Builder().url(apkUrl).build()
+                    val response = client.newCall(request).execute()
+                    if (!response.isSuccessful) throw Exception("Server returned code ${response.code}")
+
+                    val body = response.body ?: throw Exception("Response body is null")
+                    val totalBytes = body.contentLength()
+                    
+                    val inputStream = body.byteStream()
+                    val outputStream = apkFile.outputStream()
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    var totalBytesRead: Long = 0
+
+                    while (true) {
+                        bytesRead = inputStream.read(buffer)
+                        if (bytesRead == -1) break
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalBytesRead += bytesRead
+
+                        if (totalBytes > 0) {
+                            val percent = ((totalBytesRead * 100) / totalBytes).toInt()
+                            val currentMB = String.format("%.2f", totalBytesRead.toDouble() / (1024 * 1024))
+                            val totalMB = String.format("%.2f", totalBytes.toDouble() / (1024 * 1024))
+                            activity.runOnUiThread {
+                                progressBar.progress = percent
+                                progressText.text = "$percent% ($currentMB / $totalMB MB)"
+                            }
                         }
                     }
+
+                    outputStream.close()
+                    inputStream.close()
+
+                    activity.runOnUiThread {
+                        dialog.dismiss()
+                        if (apkFile.exists()) {
+                            installApk(activity, apkFile)
+                        } else {
+                            Toast.makeText(activity, "Apk file not found!", Toast.LENGTH_LONG).show()
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    activity.runOnUiThread {
+                        dialog.dismiss()
+                        Toast.makeText(activity, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
                 }
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activity.registerReceiver(
-                    receiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                    Context.RECEIVER_NOT_EXPORTED
-                )
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag")
-                activity.registerReceiver(
-                    receiver,
-                    IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-                )
-            }
-
-            android.widget.Toast.makeText(
-                activity,
-                "Downloading update... You'll be notified when done.",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
-
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(
-                activity,
-                "Download failed: ${e.message}",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
+            }.start()
         }
     }
 
