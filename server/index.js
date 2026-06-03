@@ -44,7 +44,8 @@ cron.schedule('0 * * * *', () => { pruneMessages(); });   // hourly prune check
 // HELPER
 // ─────────────────────────────────────────────
 function sendTo(username, obj) {
-  const ws = onlineUsers[username];
+  if (!username) return false;
+  const ws = onlineUsers[username.toLowerCase()];
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(obj));
     return true;
@@ -125,7 +126,7 @@ app.get('/api/user/:username', async (req, res) => {
   try {
     const u = await getUserRow(req.params.username);
     if (!u) return res.status(404).json({ error: 'User not found' });
-    res.json({ username: u.username, name: u.name, role: u.role||'user', online: !!onlineUsers[u.username] });
+    res.json({ username: u.username, name: u.name, role: u.role||'user', online: !!onlineUsers[u.username.toLowerCase()] });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -164,10 +165,10 @@ app.get('/api/friends/:username', async (req, res) => {
     let friends;
     if (u.role === 'superadmin') {
       const all = await db.execute({ sql: 'SELECT username, name, role, avatar FROM users WHERE username != ?', args: [username] });
-      friends = all.rows.map(r => ({ ...r, online: !!onlineUsers[r.username] }));
+      friends = all.rows.map(r => ({ ...r, online: !!onlineUsers[r.username.toLowerCase()] }));
     } else {
       const rows = await getFriends(username);
-      friends = rows.map(r => ({ ...r, online: !!onlineUsers[r.username] }));
+      friends = rows.map(r => ({ ...r, online: !!onlineUsers[r.username.toLowerCase()] }));
     }
 
     const pendingIn = await db.execute({
@@ -191,7 +192,7 @@ app.get('/api/friends/:username', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const r = await db.execute('SELECT username, name, role, avatar FROM users LIMIT 100');
-    res.json(r.rows.map(u => ({ ...u, online: !!onlineUsers[u.username] })));
+    res.json(r.rows.map(u => ({ ...u, online: !!onlineUsers[u.username.toLowerCase()] })));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -283,7 +284,7 @@ app.get('/api/groups/:username', async (req, res) => {
 app.get('/api/groups/:groupId/members', async (req, res) => {
   try {
     const members = await getGroupMembers(req.params.groupId);
-    res.json(members.map(m => ({ ...m, online: !!onlineUsers[m.username] })));
+    res.json(members.map(m => ({ ...m, online: !!onlineUsers[m.username.toLowerCase()] })));
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -79,6 +79,8 @@ class MainActivity : AppCompatActivity() {
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.databaseEnabled = true
+        settings.allowFileAccess = true
+        settings.allowContentAccess = true
         settings.mediaPlaybackRequiresUserGesture = false
         settings.setGeolocationEnabled(true)
         settings.cacheMode = WebSettings.LOAD_DEFAULT

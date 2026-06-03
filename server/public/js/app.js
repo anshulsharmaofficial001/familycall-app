@@ -848,8 +848,8 @@ async function loadContacts(){
           : `<span>${(u.username||'?').charAt(0).toUpperCase()}</span>`;
         const creatorBadge = isCreator ? `<span class="creator-badge">\u2756 Creator</span>` : '';
         const statusText = u.online
-          ? `<span style="color:var(--green);font-weight:700">\u25cf Online</span>`
-          : `<span style="color:var(--text2)">\u25cb Offline</span>`;
+          ? `<span class="contact-status-txt" data-user="${u.username}" style="color:var(--green);font-weight:700">● Online</span>`
+          : `<span class="contact-status-txt" data-user="${u.username}" style="color:var(--text2)">○ Offline</span>`;
         const bat = batteryCache[u.username];
         const batPct = bat ? Math.round(bat.level*100) : null;
         const batColor = !bat ? '' : bat.charging ? '#4CAF50' : batPct>30 ? '#4CAF50' : batPct>15 ? '#FF9800' : '#F44336';
@@ -1052,6 +1052,7 @@ function loadChatContacts(){
             
             let lastMsgText = 'Say hello! 👋';
             let lastMsgTime = '';
+            let tickHtml = '';
             
             if (lastMsg) {
               lastMsgTime = lastMsg.ts ? new Date(lastMsg.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
@@ -1066,7 +1067,22 @@ function loadChatContacts(){
               } else {
                 lastMsgText = lastMsg.text || '';
               }
+              
+              if (lastMsg.from_user === myUsername) {
+                if (lastMsg.status === 'read') {
+                  tickHtml = `<span style="color: #34B7F1; font-weight: bold; margin-right: 4px; font-size: 13px;">✓✓</span>`;
+                } else if (lastMsg.status === 'delivered') {
+                  tickHtml = `<span style="color: #8696a0; font-weight: bold; margin-right: 4px; font-size: 13px;">✓✓</span>`;
+                } else {
+                  tickHtml = `<span style="color: #8696a0; font-weight: bold; margin-right: 4px; font-size: 13px;">✓</span>`;
+                }
+              }
             }
+            
+            const unreadCount = userMsgs.filter(m => m.from_user !== myUsername && m.status !== 'read').length;
+            const badgeHtml = unreadCount > 0 
+              ? `<div style="background: #25D366; color: #fff; font-size: 10px; font-weight: bold; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; margin-top: 4px; flex-shrink:0;">${unreadCount}</div>`
+              : '';
             
             return `
               <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)" style="cursor:pointer;padding:12px 16px;border-bottom:1px solid #EDF2F7;display:flex;align-items:center;gap:12px">
@@ -1077,9 +1093,12 @@ function loadChatContacts(){
                 <div class="contact-info" style="flex:1;min-width:0">
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
                     <div class="contact-name" style="font-weight:800;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
-                    <div style="font-size:11px;color:var(--text2);font-weight:600">${lastMsgTime}</div>
+                    <div style="font-size:11px;color:${unreadCount > 0 ? '#25D366' : 'var(--text2)'};font-weight:700">${lastMsgTime}</div>
                   </div>
-                  <div class="contact-sub" style="font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600">${escHtml(lastMsgText)}</div>
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div class="contact-sub" style="font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;flex:1">${tickHtml}${escHtml(lastMsgText)}</div>
+                    ${badgeHtml}
+                  </div>
                 </div>
               </div>`;
           }).join('');
@@ -1708,6 +1727,13 @@ function updateContactOnlineStatus(username, online) {
   const dots = document.querySelectorAll(`.status-dot[data-user="${username}"]`);
   dots.forEach(d => { d.className = `status-dot ${online?'dot-on':'dot-off'}`; d.dataset.user = username; });
   
+  const statusTxts = document.querySelectorAll(`.contact-status-txt[data-user="${username}"]`);
+  statusTxts.forEach(t => {
+    t.textContent = online ? '● Online' : '○ Offline';
+    t.style.color = online ? 'var(--green)' : 'var(--text2)';
+    t.style.fontWeight = online ? '700' : 'normal';
+  });
+
   const friend = friendsCache.find(f => f.username === username);
   if (friend) friend.online = online;
 
@@ -2464,11 +2490,18 @@ function clearVoicePreview() {
   if (vnBtn) vnBtn.classList.remove('hide');
 }
 
+window.splashStartTime = Date.now();
+
 function hideSplashScreen() {
   const splash = document.getElementById('splashScreen');
   if (splash) {
-    splash.style.opacity = '0';
-    setTimeout(() => { splash.style.visibility = 'hidden'; }, 500);
+    const elapsed = Date.now() - (window.splashStartTime || Date.now());
+    const minDelay = 1500; // 1.5 seconds
+    const remaining = Math.max(0, minDelay - elapsed);
+    setTimeout(() => {
+      splash.style.opacity = '0';
+      setTimeout(() => { splash.style.visibility = 'hidden'; }, 500);
+    }, remaining);
   }
 }
 
@@ -2476,6 +2509,15 @@ function hideSplashScreen() {
    INIT
    ═══════════════════════════════════════════ */
 (async()=>{
+  // Wait up to 300ms for AndroidApp bridge to be injected
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  if (isAndroid && !window.AndroidApp) {
+    for (let i = 0; i < 6; i++) {
+      await new Promise(r => setTimeout(r, 50));
+      if (window.AndroidApp) break;
+    }
+  }
+
   if (window.AndroidApp) {
     try {
       const appUser = window.AndroidApp.getUsername();
@@ -2485,6 +2527,14 @@ function hideSplashScreen() {
         localStorage.setItem('fc_user', appUser);
         localStorage.setItem('fc_name', appName);
         localStorage.setItem('fc_role', appRole || 'user');
+      } else {
+        // Sync local storage to Android SharedPrefs if present
+        const u = localStorage.getItem('fc_user');
+        const n = localStorage.getItem('fc_name');
+        const r = localStorage.getItem('fc_role') || 'user';
+        if (u && n) {
+          try { window.AndroidApp.saveLogin(u, n, r); } catch(e){}
+        }
       }
     } catch(e) {
       console.error("AndroidApp sync error:", e);
@@ -2614,30 +2664,4 @@ function closePauseLocationModal() {
 
 
 
-/* ═══════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════ */
-(async()=>{
-  const u=localStorage.getItem('fc_user'),n=localStorage.getItem('fc_name'),r=localStorage.getItem('fc_role')||'user';
-  if(u&&n){
-    try{
-      const res=await fetch(`${HTTP_URL}/api/user/${u}`);
-      if(res.ok){
-        connectApp(u,n,r);
-      } else if(res.status === 404 || res.status === 401){
-        localStorage.removeItem('fc_user');
-        localStorage.removeItem('fc_name');
-        localStorage.removeItem('fc_role');
-      } else {
-        // Server or database error, keep login credentials and proceed
-        connectApp(u,n,r);
-      }
-    }catch(e){
-      // Network/offline errors, keep login credentials and proceed
-      console.warn("User validation check failed: offline or timeout", e);
-      connectApp(u,n,r);
-    }
-  }
-  // Request notification permission
-  if('Notification' in window && Notification.permission==='default') Notification.requestPermission();
-})();
+// Consolidate main initialization into single start block.
