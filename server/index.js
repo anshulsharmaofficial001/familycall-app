@@ -92,8 +92,8 @@ app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Version check endpoint — Android app calls this to check for updates
 app.get('/api/version', (req, res) => {
   res.json({
-    versionCode: 23,
-    versionName: '4.9',
+    versionCode: 24,
+    versionName: '5.0',
     apkUrl: 'https://familycall-server-tpyh.onrender.com/FamilyCall-latest.apk',
     releaseNotes: 'v4.9: Splash screen freeze permanently fixed! App never gets stuck on startup. Smooth animations & instant auto-login added.'
   });

@@ -147,12 +147,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var backPressedTime: Long = 0
+
     override fun onBackPressed() {
         val webView = binding.webView
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
+        // Ask JS layer to handle back first (chat → chatlist → main tabs)
+        webView.evaluateJavascript("window.handleAppBack && window.handleAppBack()") { result ->
+            val handled = result?.replace("\"", "") == "true"
+            if (!handled) {
+                // JS said nothing to go back → double-press to exit
+                if (System.currentTimeMillis() - backPressedTime < 2000) {
+                    super.onBackPressed()
+                } else {
+                    backPressedTime = System.currentTimeMillis()
+                    runOnUiThread {
+                        Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 

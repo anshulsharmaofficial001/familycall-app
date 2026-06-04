@@ -11,14 +11,15 @@ android {
         applicationId = "com.familycall.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 23
-        versionName = "4.9"
+        versionCode = 24
+        versionName = "5.0"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

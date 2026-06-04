@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#4A90D9">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,79 +22,26 @@
   --shadow:0 4px 20px rgba(74,144,217,0.15);
   --radius:20px;
 }
-body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text)}
 .hide{display:none!important}
-.app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;overflow-x:hidden;position:relative}
+.app{width:100%;height:100%;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:fixed;top:0;left:0}
 
 /* ANIMATIONS */
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-@keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 @keyframes pulse-gold{0%,100%{box-shadow:0 0 0 0 rgba(255,215,0,0.5)}50%{box-shadow:0 0 0 8px rgba(255,215,0,0)}}
 @keyframes incoming-ring{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
 @keyframes spin-ring{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 @keyframes spin-ring2{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}
 @keyframes creator-glow{0%,100%{text-shadow:0 0 8px var(--gold),0 0 16px var(--gold2)}50%{text-shadow:0 0 16px var(--gold),0 0 32px var(--gold2),0 0 48px #fff}}
-
-/* SMOOTH TRANSITIONS & FADE-INS */
-#loginPage:not(.hide), #registerPage:not(.hide), #mainPage:not(.hide), #callingPage:not(.hide), #incomingPage:not(.hide) {
-  animation: fadeInAppPage 0.35s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-}
-
-@keyframes fadeInAppPage {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.modal-overlay:not(.hide) {
-  animation: fadeInOverlay 0.25s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-}
-.modal-overlay:not(.hide) .modal-card {
-  animation: scaleInModal 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-@keyframes fadeInOverlay {
-  from { opacity: 0; backdrop-filter: blur(0px); }
-  to { opacity: 1; backdrop-filter: blur(4px); }
-}
-
-@keyframes scaleInModal {
-  from { transform: scale(0.9) translateY(15px); opacity: 0; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
-}
-
-/* Chat view transitions */
-#chatAreaView:not(.hide) {
-  animation: slideInRight 0.32s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-}
-#chatListView:not(.hide) {
-  animation: fadeInAppPage 0.28s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-}
-
-@keyframes slideInRight {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-/* Premium Splash Transitions */
-#splashScreen {
-  transition: opacity 0.8s cubic-bezier(0.23, 1, 0.32, 1), visibility 0.8s;
-  will-change: opacity;
-}
-#splashScreen.hide-splash {
-  opacity: 0 !important;
-  visibility: hidden !important;
-}
-.splash-content {
-  transition: transform 0.8s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.8s cubic-bezier(0.23, 1, 0.32, 1);
-  will-change: transform, opacity;
-}
-#splashScreen.hide-splash .splash-content {
-  transform: scale(0.9) translateY(-15px) !important;
-  opacity: 0 !important;
-}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
+@keyframes slideInLeft{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes typing-bounce{0%,80%,100%{transform:scale(0.3);opacity:0.3}40%{transform:scale(1.1);opacity:1}}
 
 /* AUTH */
-.auth-bg{min-height:100vh;background:linear-gradient(160deg,#4A90D9 0%,#2C6FAC 40%,#1a4a7a 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden}
+.auth-bg{position:fixed;inset:0;background:linear-gradient(160deg,#4A90D9 0%,#2C6FAC 40%,#1a4a7a 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow:hidden;z-index:10}
 .auth-bg::before{content:'';position:absolute;top:-80px;right:-80px;width:300px;height:300px;background:rgba(255,255,255,0.08);border-radius:50%}
 .auth-bg::after{content:'';position:absolute;bottom:-60px;left:-60px;width:220px;height:220px;background:rgba(255,255,255,0.05);border-radius:50%}
 .auth-logo-wrap{text-align:center;margin-bottom:28px;animation:float 3s ease-in-out infinite}
@@ -112,69 +59,76 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 .main-btn:active{transform:scale(0.97);opacity:.9}
 .auth-link{text-align:center;margin-top:16px;font-size:13px;color:var(--text2)}
 .auth-link a{color:var(--primary);font-weight:700;text-decoration:none}
-</style>
-<style>
-/* TOPBAR */
-.topbar{background:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(74,144,217,0.1);position:sticky;top:0;z-index:10}
-.topbar-left{display:flex;align-items:center;gap:12px}
-.topbar-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;border:3px solid var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:var(--primary);background:var(--primary-light);overflow:hidden;flex-shrink:0;cursor:pointer}
+
+/* ── TOPBAR ── */
+.topbar{background:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 0 rgba(0,0,0,0.08);flex-shrink:0;z-index:10}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.topbar-avatar{width:40px;height:40px;border-radius:50%;border:2px solid var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:var(--primary);background:var(--primary-light);overflow:hidden;flex-shrink:0;cursor:pointer}
 .topbar-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.topbar-avatar.creator-ring{border:3px solid transparent;background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,var(--gold),var(--gold2),var(--gold)) border-box;animation:pulse-gold 2s infinite}
-.topbar-info .app-name{font-family:'Pacifico',cursive;font-size:18px;color:var(--primary);line-height:1}
-.topbar-info .user-status{font-size:11px;color:var(--text2);font-weight:600;margin-top:2px}
-.topbar-actions{display:flex;gap:8px}
-.icon-btn{background:var(--primary-light);border:none;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;transition:all .2s}
-.icon-btn:active{transform:scale(.9);background:#D6E8FF}
+.topbar-avatar.creator-ring{border:2px solid transparent;background:linear-gradient(#fff,#fff) padding-box,linear-gradient(135deg,var(--gold),var(--gold2)) border-box;animation:pulse-gold 2s infinite}
+.topbar-info .app-name{font-family:'Pacifico',cursive;font-size:19px;color:var(--primary);line-height:1}
+.topbar-info .user-status{font-size:10px;color:var(--text2);font-weight:600;margin-top:1px}
+.topbar-actions{display:flex;gap:6px}
+.icon-btn{background:var(--primary-light);border:none;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .2s}
+.icon-btn:active{transform:scale(.9)}
 
-/* TABS */
-.tabs{display:flex;background:#fff;border-bottom:2px solid #EDF2F7}
-.tab-btn{flex:1;padding:13px 8px;border:none;background:none;font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;color:var(--text2);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .2s}
+/* ── TABS (WhatsApp style — 3 tabs) ── */
+.tabs{display:flex;background:#fff;border-bottom:1px solid #EDF2F7;flex-shrink:0}
+.tab-btn{flex:1;padding:12px 4px 10px;border:none;background:none;font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:2px}
 .tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+.tab-icon{font-size:18px}
 
-/* SEARCH */
-.search-bar{padding:12px 16px;background:#fff;border-bottom:1px solid #EDF2F7;display:flex;gap:8px}
-.search-input{flex:1;border:2px solid #EDF2F7;border-radius:12px;padding:10px 14px;font-size:14px;font-family:'Nunito',sans-serif;outline:none;background:#FAFAFA;transition:all .2s}
-.search-input:focus{border-color:var(--primary);background:#fff}
-.search-input::placeholder{color:#CBD5E0}
-.search-btn{background:var(--primary);color:#fff;border:none;border-radius:12px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;white-space:nowrap;transition:all .2s}
-.search-btn:active{background:var(--primary-dark)}
+/* ── SCROLLABLE CONTENT AREA ── */
+.tab-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 
-/* CONTACTS */
-.section-title{padding:12px 16px 6px;font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:1px;background:var(--bg)}
-.contact-item{display:flex;align-items:center;padding:12px 16px;background:#fff;margin:4px 12px;border-radius:18px;box-shadow:0 2px 8px rgba(74,144,217,0.06);transition:all .2s;cursor:pointer}
-.contact-item:active{transform:scale(.98)}
-.contact-avatar{width:50px;height:50px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));flex-shrink:0;margin-right:12px;position:relative;overflow:hidden}
+/* ── SEARCH ── */
+.search-bar{padding:8px 12px;background:#fff;border-bottom:1px solid #EDF2F7;display:flex;gap:8px}
+.search-input{flex:1;border:1.5px solid #EDF2F7;border-radius:20px;padding:9px 14px;font-size:14px;font-family:'Nunito',sans-serif;outline:none;background:#F7FAFF;transition:all .2s}
+.search-input:focus{border-color:var(--primary)}
+.search-btn{background:var(--primary);color:#fff;border:none;border-radius:20px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif;white-space:nowrap}
+
+/* ── CONTACTS ── */
+.section-title{padding:10px 16px 4px;font-size:10px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:1px;background:var(--bg)}
+.contact-item{display:flex;align-items:center;padding:10px 16px;background:#fff;cursor:pointer;border-bottom:1px solid rgba(0,0,0,0.04);transition:background .15s}
+.contact-item:active{background:#F0F4FF}
+.contact-avatar{width:48px;height:48px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));flex-shrink:0;margin-right:12px;position:relative;overflow:hidden}
 .contact-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.contact-avatar.creator-av{background:linear-gradient(135deg,#FFD700,#FFA500);border:3px solid var(--gold);box-shadow:0 0 12px rgba(255,215,0,0.4)}
-.status-dot{position:absolute;bottom:1px;right:1px;width:12px;height:12px;border-radius:50%;border:2px solid #fff}
+.contact-avatar.creator-av{background:linear-gradient(135deg,#FFD700,#FFA500);border:2px solid var(--gold)}
+.status-dot{position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;border:2px solid #fff}
 .dot-on{background:var(--green)}
 .dot-off{background:#CBD5E0}
 .contact-info{flex:1;min-width:0}
-.contact-name{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:5px}
+.contact-name{font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .creator-badge{font-family:'Pacifico',cursive;font-size:10px;color:var(--gold2);animation:creator-glow 2s ease-in-out infinite;white-space:nowrap}
 .contact-sub{font-size:12px;color:var(--text2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.contact-actions{display:flex;gap:6px;flex-shrink:0}
-.action-btn{width:38px;height:38px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;transition:all .2s}
-.call-btn{background:#E8F5E9;color:#2E7D32}
-.call-btn:active{background:#C8E6C9}
-.chat-btn-sm{background:#E3F2FD;color:var(--primary)}
-.chat-btn-sm:active{background:#BBDEFB}
-.add-btn{background:#FFF3E0;color:#E65100;font-size:13px;font-weight:700;border-radius:20px;width:auto;padding:6px 14px;height:auto}
+.contact-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:8px}
+.contact-time{font-size:11px;color:var(--text2)}
+.unread-badge{background:var(--green);color:#fff;font-size:11px;font-weight:800;border-radius:10px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;padding:0 5px}
+.tick-mark{font-size:12px;color:#A0AEC0}
+.tick-blue{color:#34B7F1}
 
-.empty-state{text-align:center;padding:50px 24px;color:var(--text2)}
-.empty-icon{font-size:52px;margin-bottom:12px}
+.contact-actions{display:flex;gap:6px;flex-shrink:0}
+.action-btn{width:36px;height:36px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;transition:all .2s}
+.call-btn{background:#E8F5E9;color:#2E7D32}
+.chat-btn-sm{background:#E3F2FD;color:var(--primary)}
+.add-btn{background:#FFF3E0;color:#E65100;font-size:12px;font-weight:700;border-radius:16px;width:auto;padding:5px 12px;height:auto}
+.empty-state{text-align:center;padding:48px 24px;color:var(--text2)}
+.empty-icon{font-size:48px;margin-bottom:10px}
 .empty-state p{font-size:14px;font-weight:600}
 .empty-state small{font-size:12px;margin-top:4px;display:block}
 
 /* PENDING REQUEST */
-.req-item{display:flex;align-items:center;padding:10px 16px;background:#FFF8E1;margin:4px 12px;border-radius:14px;border:1px solid #FFE082}
+.req-item{display:flex;align-items:center;padding:10px 16px;background:#FFF8E1;border-bottom:1px solid #FFE082}
 .req-name{flex:1;font-size:14px;font-weight:700;color:var(--text)}
 .req-btns{display:flex;gap:6px}
-.req-accept{background:#E8F5E9;color:#2E7D32;border:none;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer}
-.req-decline{background:#FFEBEE;color:#C62828;border:none;border-radius:10px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer}
-</style>
-<style>
-/* CALL SCREEN */
+.req-accept{background:#E8F5E9;color:#2E7D32;border:none;border-radius:10px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.req-decline{background:#FFEBEE;color:#C62828;border:none;border-radius:10px;padding:6px 12px;font-size:13px;font-weight:700;cursor:pointer}
+
+/* ── FEAT BUTTONS ── */
+.feat-btn{background:#F0F4FF;border:1.5px solid #C7D7F5;border-radius:20px;padding:7px 14px;font-size:12px;font-weight:700;color:#2C6FAC;cursor:pointer;white-space:nowrap;font-family:Nunito,sans-serif;transition:all .2s;flex-shrink:0}
+.feat-btn:active{background:#D6E4FF}
+
+/* ── CALL SCREEN ── */
 .call-screen{position:fixed;inset:0;background:linear-gradient(160deg,#1a3a6b 0%,#2C6FAC 50%,#1a3a6b 100%);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:56px 24px 44px;z-index:100}
 .call-screen.hide{display:none!important}
 .call-avatar-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
@@ -186,8 +140,6 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 .call-name{font-size:26px;font-weight:800;color:#fff;text-align:center;text-shadow:0 2px 8px rgba(0,0,0,0.2)}
 .call-status{font-size:13px;color:rgba(255,255,255,0.75);margin-top:4px;letter-spacing:1px}
 .call-timer{font-size:24px;font-weight:700;color:#fff;margin-top:6px;letter-spacing:2px;font-family:'Nunito',sans-serif}
-
-/* CALL CONTROLS */
 .call-controls{width:100%;display:flex;flex-direction:column;align-items:center;gap:18px}
 .call-btns-row{display:flex;gap:20px;justify-content:center}
 .ctrl-btn{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;background:none;cursor:pointer}
@@ -197,12 +149,12 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 .end-call-btn{width:68px;height:68px;border-radius:50%;background:var(--accent);border:none;color:#fff;font-size:26px;cursor:pointer;box-shadow:0 6px 20px rgba(255,107,107,0.5);transition:all .2s;display:flex;align-items:center;justify-content:center}
 .end-call-btn:active{transform:scale(.93)}
 
-/* INCOMING SCREEN */
+/* ── INCOMING SCREEN ── */
 .incoming-screen{position:fixed;inset:0;background:linear-gradient(160deg,#1b5e20 0%,#2e7d32 50%,#1b5e20 100%);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:80px 24px 64px;z-index:100}
 .incoming-screen.hide{display:none!important}
 .incoming-label{font-size:13px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;font-weight:700}
 .incoming-center{display:flex;flex-direction:column;align-items:center;gap:16px}
-.incoming-avatar{width:120px;height:120px;border-radius:50%;object-fit:cover;border:4px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800;color:#fff;animation:incoming-ring 1.5s ease-in-out infinite;overflow:hidden;box-shadow:0 0 40px rgba(255,255,255,0.2)}
+.incoming-avatar{width:120px;height:120px;border-radius:50%;border:4px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800;color:#fff;animation:incoming-ring 1.5s ease-in-out infinite;overflow:hidden}
 .incoming-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .incoming-name{font-size:28px;font-weight:800;color:#fff;text-align:center}
 .incoming-sub{font-size:13px;color:rgba(255,255,255,0.7);letter-spacing:1px}
@@ -213,28 +165,76 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 .inc-decline .inc-btn-circle{background:var(--accent);box-shadow:0 6px 20px rgba(255,107,107,0.5)}
 .inc-btn span{font-size:13px;color:rgba(255,255,255,0.9);font-weight:700}
 
-/* CHAT */
-.chat-header{padding:14px 16px;background:#fff;border-bottom:1px solid #EDF2F7;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(74,144,217,0.08)}
-.chat-back{background:var(--primary-light);border:none;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--primary)}
-.chat-title{font-size:16px;font-weight:800;color:var(--text)}
-.chat-messages{flex:1;overflow-y:auto;padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:8px;min-height:200px;max-height:55vh}
-.chat-msg{padding:10px 14px;border-radius:18px;max-width:80%;font-size:14px;line-height:1.5;word-break:break-word;font-weight:600}
-.chat-mine{background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
-.chat-other{background:#fff;color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
-.chat-input-bar{padding:10px 12px;background:#fff;border-top:1px solid #EDF2F7;display:flex;gap:8px;align-items:center}
-.chat-input-bar input{flex:1;border:2px solid #EDF2F7;border-radius:22px;padding:10px 16px;font-size:14px;font-family:'Nunito',sans-serif;outline:none;transition:all .2s;background:#FAFAFA}
+/* ── CHAT (WhatsApp-like) ── */
+.chat-page{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:50;animation:slideInRight 0.28s cubic-bezier(0.23,1,0.32,1)}
+.chat-page.hide{display:none!important}
+.chat-header{padding:0 8px 0 0;background:#fff;border-bottom:1px solid rgba(0,0,0,0.06);display:flex;align-items:center;height:60px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.chat-back{background:none;border:none;width:44px;height:60px;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;color:var(--primary)}
+.chat-header-info{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;padding:6px 0}
+.chat-header-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-dark));display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:#fff;flex-shrink:0;overflow:hidden}
+.chat-header-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.chat-header-name{font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-header-sub{font-size:11px;color:var(--text2)}
+.chat-header-actions{display:flex;gap:4px}
+.chat-messages{flex:1;overflow-y:auto;padding:10px 10px 4px;display:flex;flex-direction:column;gap:3px;-webkit-overflow-scrolling:touch}
+.chat-msg{padding:8px 12px 4px;border-radius:16px;max-width:78%;font-size:14px;line-height:1.45;word-break:break-word;font-weight:600;position:relative}
+.chat-mine{background:linear-gradient(135deg,#DCF8C6,#c8f0a0);color:#2D3748;align-self:flex-end;border-bottom-right-radius:4px}
+.chat-other{background:#fff;color:var(--text);align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.08)}
+.msg-meta{display:flex;align-items:center;justify-content:flex-end;gap:3px;margin-top:2px;font-size:10px;color:rgba(0,0,0,0.4)}
+.chat-other .msg-meta{justify-content:flex-start;color:var(--text2)}
+.msg-tick{font-size:12px}
+.msg-tick.blue{color:#34B7F1}
+.msg-sender-name{font-size:11px;font-weight:800;margin-bottom:3px;display:block}
+.chat-input-bar{background:#fff;border-top:1px solid rgba(0,0,0,0.06);display:flex;gap:6px;align-items:center;padding:8px 10px;flex-shrink:0}
+.chat-input-bar input{flex:1;border:1.5px solid #EDF2F7;border-radius:22px;padding:9px 14px;font-size:14px;font-family:'Nunito',sans-serif;outline:none;transition:all .2s;background:#FAFAFA}
 .chat-input-bar input:focus{border-color:var(--primary);background:#fff}
-.chat-send-btn{background:var(--primary);color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
-.chat-send-btn:active{background:var(--primary-dark)}
-.voice-note-btn{background:#FFF3E0;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.chat-send-btn{background:var(--primary);color:#fff;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.voice-note-btn{background:#FFF3E0;border:none;border-radius:50%;width:42px;height:42px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .voice-note-btn.recording{background:#FFEBEE;animation:pulse-gold .5s infinite}
+.typing-indicator{font-size:12px;color:var(--green);font-weight:700;display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#fff;border-radius:16px;border-bottom-left-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,0.08);align-self:flex-start}
+.typing-dots{display:inline-flex;gap:3px;align-items:center}
+.typing-dot{width:5px;height:5px;background:var(--green);border-radius:50%;animation:typing-bounce 1.2s infinite ease-in-out}
+.typing-dot:nth-child(2){animation-delay:0.2s}
+.typing-dot:nth-child(3){animation-delay:0.4s}
 
-/* PROFILE MODAL */
+/* ── PROFILE FULL-SCREEN PAGE ── */
+.profile-page{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:60;animation:slideInRight 0.28s cubic-bezier(0.23,1,0.32,1)}
+.profile-page.hide{display:none!important}
+.profile-header-bar{background:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EDF2F7;flex-shrink:0}
+.profile-back-btn{background:none;border:none;font-size:22px;cursor:pointer;color:var(--primary);width:36px;height:36px;display:flex;align-items:center;justify-content:center}
+.profile-header-title{font-size:17px;font-weight:800;color:var(--text)}
+.profile-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.profile-cover{background:linear-gradient(135deg,#2C6FAC,#4A90D9);padding:32px 24px 24px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.profile-big-avatar{width:90px;height:90px;border-radius:50%;border:3px solid rgba(255,255,255,0.5);background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:800;color:#fff;overflow:hidden;cursor:pointer}
+.profile-big-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.profile-display-name{font-size:22px;font-weight:800;color:#fff;text-align:center}
+.profile-username{font-size:13px;color:rgba(255,255,255,0.8)}
+.profile-actions-row{display:flex;gap:16px;justify-content:center;padding:20px;background:#fff;border-bottom:8px solid var(--bg)}
+.profile-action-btn{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;background:none;cursor:pointer}
+.profile-action-icon{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px}
+.profile-action-label{font-size:12px;font-weight:700;color:var(--text2)}
+.profile-info-section{background:#fff;margin-bottom:8px;padding:16px}
+.profile-info-row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #F7F7F7}
+.profile-info-row:last-child{border-bottom:none}
+.profile-info-icon{font-size:20px;width:30px;text-align:center}
+.profile-info-text{flex:1}
+.profile-info-label{font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:0.4px}
+.profile-info-val{font-size:14px;font-weight:700;color:var(--text)}
+
+/* ── MY PROFILE / SETTINGS ── */
+.settings-page{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:60;animation:slideInRight 0.28s cubic-bezier(0.23,1,0.32,1)}
+.settings-page.hide{display:none!important}
+.settings-row{display:flex;align-items:center;gap:14px;padding:14px 16px;background:#fff;border-bottom:1px solid #F7F7F7;cursor:pointer}
+.settings-row:active{background:#F7FAFF}
+.settings-icon{font-size:22px;width:36px;text-align:center}
+.settings-label{font-size:15px;font-weight:700;color:var(--text);flex:1}
+.settings-arrow{font-size:18px;color:#CBD5E0}
+
+/* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
-.modal-card{background:#fff;border-radius:24px;padding:24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.modal-card{background:#fff;border-radius:24px;padding:24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:fadeIn 0.25s ease}
 .modal-card h3{font-size:18px;font-weight:800;color:var(--text);margin-bottom:20px;text-align:center}
 .avatar-upload-wrap{display:flex;align-items:center;gap:16px;margin-bottom:20px}
-#profileAvatarPreview{width:70px;height:70px;border-radius:50%;object-fit:cover;border:3px solid var(--primary-light);background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;color:var(--primary);overflow:hidden;flex-shrink:0}
 .upload-info{flex:1}
 .upload-info p{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px}
 .upload-info small{font-size:11px;color:#CBD5E0}
@@ -245,42 +245,45 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 .modal-btns .main-btn{flex:1}
 .cancel-btn{flex:1;background:var(--bg);border:2px solid #EDF2F7;color:var(--text2);border-radius:14px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Nunito',sans-serif}
 
-/* WHATSAPP SYSTEM TICK AND TYPING ANIMATIONS */
-.tick-wrap{font-size:10px;margin-left:4px;display:inline-flex;align-items:center;vertical-align:middle}
-.tick-blue{color:#34B7F1;font-weight:bold}
-.tick-grey{color:#A0AEC0}
-.typing-indicator{font-size:12px;color:var(--green);font-weight:700;display:inline-flex;align-items:center;gap:4px}
-.typing-dots{display:inline-flex;gap:2px;align-items:center;margin-left:3px}
-.typing-dot{width:4px;height:4px;background:var(--green);border-radius:50%;animation:typing-bounce 1.2s infinite ease-in-out}
-.typing-dot:nth-child(2){animation-delay:0.2s}
-.typing-dot:nth-child(3){animation-delay:0.4s}
-@keyframes typing-bounce{0%,80%,100%{transform:scale(0.3);opacity:0.3}40%{transform:scale(1.1);opacity:1}}
-.msg-sender-name{font-size:11px;font-weight:800;color:#5A67D8;margin-bottom:2px;display:block}
+/* Calls tab empty */
+.calls-list{display:flex;flex-direction:column}
+.call-history-item{display:flex;align-items:center;padding:12px 16px;background:#fff;border-bottom:1px solid rgba(0,0,0,0.04);cursor:pointer}
+.call-history-item:active{background:#F0F4FF}
+.call-type-icon{font-size:16px;margin-right:12px}
+.call-history-info{flex:1;min-width:0}
+.call-history-name{font-size:15px;font-weight:700;color:var(--text)}
+.call-history-meta{font-size:12px;color:var(--text2);margin-top:1px}
+.call-history-time{font-size:11px;color:var(--text2);flex-shrink:0}
+
+@keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
+@keyframes pulse-gold{0%,100%{box-shadow:0 0 0 0 rgba(255,215,0,0.5)}50%{box-shadow:0 0 0 8px rgba(255,215,0,0)}}
+@keyframes creator-glow{0%,100%{text-shadow:0 0 8px var(--gold),0 0 16px var(--gold2)}50%{text-shadow:0 0 16px var(--gold),0 0 32px var(--gold2),0 0 48px #fff}}
 </style>
 </head>
 <body>
 
 <!-- SPLASH SCREEN -->
 <div id="splashScreen" style="position:fixed;top:0;left:0;width:100%;height:100%;background:linear-gradient(135deg,#2C6FAC 0%,#4A90D9 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;">
-  <div class="splash-content" style="text-align:center;animation:float 3s ease-in-out infinite">
-    <div style="font-size:76px;margin-bottom:14px;filter:drop-shadow(0 4px 12px rgba(74,144,217,0.3))">📞</div>
-    <div style="font-family:'Pacifico',cursive;font-size:40px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,0.2)">FamilyCall</div>
-    <div style="font-size:13px;color:#E8F4FF;margin-top:6px;letter-spacing:1.5px;font-weight:600;text-transform:uppercase">Stay Close, Always</div>
+  <div style="text-align:center;animation:float 3s ease-in-out infinite">
+    <div style="font-size:72px;margin-bottom:12px">📞</div>
+    <div style="font-family:'Pacifico',cursive;font-size:38px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,0.2)">FamilyCall</div>
+    <div style="font-size:12px;color:#E8F4FF;margin-top:6px;letter-spacing:1.5px;font-weight:600;text-transform:uppercase">Stay Close, Always</div>
   </div>
 </div>
-<!-- ABSOLUTE FAILSAFE: runs instantly, no dependency on app.js at all -->
+<!-- ABSOLUTE FAILSAFE: splash dies after 4s no matter what -->
 <script>
 (function(){
+  window.splashStartTime = Date.now();
   var _t = setTimeout(function(){
     var s = document.getElementById('splashScreen');
     if (s) { s.style.transition = 'none'; s.style.display = 'none'; try { s.parentNode.removeChild(s); } catch(e){} }
-  }, 5000);
+  }, 4000);
   window.__splashFailsafeTimer = _t;
 })();
 </script>
 
 <!-- LOGIN -->
-<div id="loginPage" class="auth-bg">
+<div id="loginPage" class="auth-bg hide">
   <div class="auth-logo-wrap">
     <span class="auth-logo-icon">📞</span>
     <div class="auth-app-name">FamilyCall</div>
@@ -315,9 +318,10 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
 
 <!-- MAIN APP -->
 <div id="mainPage" class="app hide">
+  <!-- TOPBAR -->
   <div class="topbar">
     <div class="topbar-left">
-      <div class="topbar-avatar" id="topbarAvatar" onclick="openProfileModal()"></div>
+      <div class="topbar-avatar" id="topbarAvatar" onclick="openMySettings()"></div>
       <div class="topbar-info">
         <div class="app-name" id="topbarName">FamilyCall</div>
         <div class="user-status" id="userStatusLine">Loading...</div>
@@ -327,84 +331,212 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
       <button class="icon-btn" id="logoutBtn" title="Logout">🚪</button>
     </div>
   </div>
+
+  <!-- TABS — 3 only: Status | Chats | Calls -->
   <div class="tabs">
-    <button class="tab-btn active" id="tabContacts">👥 Family</button>
-    <button class="tab-btn" id="tabChat">💬 Messages</button>
+    <button class="tab-btn active" id="tabStatus" onclick="switchTab('status')">
+      <span class="tab-icon">🔵</span>Status
+    </button>
+    <button class="tab-btn" id="tabChats" onclick="switchTab('chats')">
+      <span class="tab-icon">💬</span>Chats
+    </button>
+    <button class="tab-btn" id="tabCalls" onclick="switchTab('calls')">
+      <span class="tab-icon">📞</span>Calls
+    </button>
   </div>
 
-  <!-- CONTACTS VIEW -->
-  <div id="contactsView">
-    <div class="search-bar">
-      <input class="search-input" id="searchUser" placeholder="🔍 Search by username...">
-      <button class="search-btn" id="callUserBtn">Search</button>
-    </div>
-    <!-- Feature Buttons Row -->
-    <div style="display:flex;gap:8px;padding:10px 16px;overflow-x:auto;background:#fff;border-bottom:1px solid #EDF2F7">
-      <button class="feat-btn" onclick="openLocationMap()">📍 Map</button>
-      <button class="feat-btn" onclick="openVoiceStatusModal()">🎙️ Status</button>
-      <button class="feat-btn" id="sosBtn" style="background:#FFEBEE;color:#C62828;border-color:#EF9A9A">🆘 SOS</button>
-      <button class="feat-btn" onclick="openGroupsModal()">👨‍👩‍👧‍👦 Groups</button>
-      <button class="feat-btn" onclick="openPauseLocationModal()">⏸️ Pause</button>
-      <button class="feat-btn" id="adminPanelBtn" onclick="openAdminPanel()" style="display:none;background:linear-gradient(135deg,#FFD700,#FFA500);color:#7B4F00;border-color:#FFD700;font-weight:800">👑 Admin</button>
-    </div>
-    <div id="searchResults"></div>
-    <div id="pendingRequests"></div>
-    <div class="contacts-list" id="contactsList"></div>
-    <div class="empty-state hide" id="noContacts">
-      <div class="empty-icon">👨‍👩‍👧‍👦</div>
-      <p>No family members yet</p>
-      <small>Search username above to add</small>
-    </div>
-  </div>
+  <!-- TAB CONTENT WRAPPER -->
+  <div class="tab-content" id="tabContentArea">
 
-  <!-- CHAT VIEW -->
-  <div id="chatView" class="hide">
-    <div id="chatListView">
+    <!-- STATUS TAB -->
+    <div id="statusTab">
+      <div style="display:flex;gap:8px;padding:10px 14px;overflow-x:auto;background:#fff;border-bottom:1px solid #EDF2F7">
+        <button class="feat-btn" onclick="openLocationMap()">📍 Map</button>
+        <button class="feat-btn" onclick="openVoiceStatusModal()">🎙️ My Status</button>
+        <button class="feat-btn" id="sosBtn" style="background:#FFEBEE;color:#C62828;border-color:#EF9A9A">🆘 SOS</button>
+        <button class="feat-btn" onclick="openGroupsModal()">👨‍👩‍👧‍👦 Groups</button>
+        <button class="feat-btn" onclick="openPauseLocationModal()">⏸️ Pause</button>
+        <button class="feat-btn" id="adminPanelBtn" onclick="openAdminPanel()" style="display:none;background:linear-gradient(135deg,#FFD700,#FFA500);color:#7B4F00;border-color:#FFD700;font-weight:800">👑 Admin</button>
+      </div>
+      <!-- Search -->
+      <div class="search-bar">
+        <input class="search-input" id="searchUser" placeholder="🔍 Search by username...">
+        <button class="search-btn" id="callUserBtn">Search</button>
+      </div>
+      <div id="searchResults"></div>
+      <div id="pendingRequests"></div>
+      <div class="contacts-list" id="contactsList"></div>
+      <div class="empty-state hide" id="noContacts">
+        <div class="empty-icon">👨‍👩‍👧‍👦</div>
+        <p>No family members yet</p>
+        <small>Search username above to add</small>
+      </div>
+    </div>
+
+    <!-- CHATS TAB -->
+    <div id="chatsTab" class="hide">
       <div class="contacts-list" id="chatContactsList"></div>
+      <div class="empty-state hide" id="noChats">
+        <div class="empty-icon">💬</div>
+        <p>No chats yet</p>
+        <small>Start chatting from the Status tab</small>
+      </div>
     </div>
-    <div id="chatAreaView" class="hide">
-      <!-- WhatsApp-style chat header -->
-      <div class="chat-header" id="chatHeader" style="padding:0;height:64px;display:flex;align-items:center;gap:0">
-        <button class="chat-back" onclick="closeChatArea()" style="width:44px;height:64px;display:flex;align-items:center;justify-content:center;flex-shrink:0">←</button>
-        <!-- Avatar + Name (tap = profile/info) -->
-        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer" onclick="openChatProfile()">
-          <div id="chatHeaderAvatar" style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--primary-dark));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0;overflow:hidden"></div>
-          <div style="min-width:0">
-            <div id="chatWith" style="font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-            <div id="chatHeaderSub" style="font-size:11px;color:var(--text2)"></div>
-          </div>
-        </div>
-        <!-- Action buttons -->
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;padding-right:10px">
-          <button id="chatCallBtn" onclick="chatHeaderCall()" title="Call" style="width:38px;height:38px;border-radius:50%;background:#E8F4FF;border:none;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">📞</button>
-          <button id="chatSosBtn" onclick="chatHeaderSOS()" title="SOS to this person" style="width:38px;height:38px;border-radius:50%;background:#FFEBEE;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:800;color:#C62828">🆘</button>
-          <button id="chatBroadcastBtn" onclick="chatHeaderBroadcast()" title="Voice Broadcast" style="width:38px;height:38px;border-radius:50%;background:#FFF3E0;border:none;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;display:none">📢</button>
+
+    <!-- CALLS TAB -->
+    <div id="callsTab" class="hide">
+      <div class="calls-list" id="callHistoryList"></div>
+      <div class="empty-state" id="noCallHistory">
+        <div class="empty-icon">📞</div>
+        <p>No call history yet</p>
+        <small>Make or receive a call to see history</small>
+      </div>
+    </div>
+
+  </div><!-- /tab-content -->
+</div><!-- /mainPage -->
+
+<!-- CHAT PAGE (full screen, slides in from right) -->
+<div id="chatPage" class="chat-page hide">
+  <div class="chat-header">
+    <button class="chat-back" onclick="closeChatPage()">←</button>
+    <div class="chat-header-info" id="chatHeaderInfo" onclick="openChatProfile()">
+      <div class="chat-header-avatar" id="chatHeaderAvatar"></div>
+      <div>
+        <div class="chat-header-name" id="chatWith"></div>
+        <div class="chat-header-sub" id="chatHeaderSub">tap for info</div>
+      </div>
+    </div>
+    <div class="chat-header-actions">
+      <button id="chatCallBtn" onclick="chatHeaderCall()" style="width:36px;height:36px;border-radius:50%;background:#E8F4FF;border:none;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center">📞</button>
+      <button id="chatSosBtn" onclick="chatHeaderSOS()" style="width:36px;height:36px;border-radius:50%;background:#FFEBEE;border:none;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center">🆘</button>
+    </div>
+  </div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <input type="file" id="chatFileInput" style="display:none" onchange="handleFileSelected(this)">
+  <div class="chat-input-bar">
+    <div style="position:relative;display:flex;align-items:center">
+      <button id="chatAttachBtn" onclick="toggleAttachMenu(event)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);padding:4px;outline:none">📎</button>
+      <div id="attachMenu" class="hide" style="position:absolute;bottom:52px;left:0;background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.15);display:flex;flex-direction:column;gap:2px;padding:6px;z-index:100;min-width:140px;border:1px solid #EDF2F7">
+        <button type="button" onclick="triggerFileInput('image/*,video/*')" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">🖼️ Gallery</button>
+        <button type="button" onclick="triggerFileInput('*/*')" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">📄 Document</button>
+        <button type="button" onclick="shareContactClicked()" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">👤 Contact ID</button>
+        <button type="button" onclick="shareCurrentLocation()" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">📍 Location</button>
+      </div>
+    </div>
+    <button class="voice-note-btn" id="voiceNoteBtn" title="Voice Note">🎙️</button>
+    <div id="voicePreviewArea" class="hide" style="display:flex;align-items:center;gap:8px;flex:1;background:#F0F4FF;border-radius:22px;padding:4px 12px;margin:0 4px;border:1px solid #D0E0FF">
+      <button type="button" id="voiceDiscardBtn" onclick="clearVoicePreview()" style="background:none;border:none;font-size:13px;cursor:pointer;color:#C62828;padding:4px;font-weight:800;white-space:nowrap;outline:none">🗑️ Discard</button>
+      <audio id="voicePreviewPlayer" controls style="flex:1;height:28px"></audio>
+    </div>
+    <input id="chatInput" placeholder="Type a message..." maxlength="500">
+    <button class="chat-send-btn" id="chatSendBtn">➤</button>
+  </div>
+</div>
+
+<!-- PROFILE PAGE (full screen, someone else's profile) -->
+<div id="profilePage" class="profile-page hide">
+  <div class="profile-header-bar">
+    <button class="profile-back-btn" onclick="closeProfilePage()">←</button>
+    <div class="profile-header-title">Contact Info</div>
+  </div>
+  <div class="profile-body">
+    <div class="profile-cover">
+      <div class="profile-big-avatar" id="profilePageAvatar"></div>
+      <div class="profile-display-name" id="profilePageName"></div>
+      <div class="profile-username" id="profilePageUsername"></div>
+    </div>
+    <div class="profile-actions-row">
+      <button class="profile-action-btn" onclick="profilePageMessage()">
+        <div class="profile-action-icon" style="background:#E8F4FF">💬</div>
+        <div class="profile-action-label">Message</div>
+      </button>
+      <button class="profile-action-btn" onclick="profilePageCall()">
+        <div class="profile-action-icon" style="background:#E8F5E9">📞</div>
+        <div class="profile-action-label">Call</div>
+      </button>
+      <button class="profile-action-btn" onclick="profilePageBlock()">
+        <div class="profile-action-icon" style="background:#FFEBEE">🚫</div>
+        <div class="profile-action-label">Block</div>
+      </button>
+    </div>
+    <div class="profile-info-section">
+      <div class="profile-info-row">
+        <div class="profile-info-icon">👤</div>
+        <div class="profile-info-text">
+          <div class="profile-info-label">Username</div>
+          <div class="profile-info-val" id="profilePageUsernameInfo"></div>
         </div>
       </div>
-      <div class="chat-messages" id="chatMessages"></div>
-      <input type="file" id="chatFileInput" style="display:none" onchange="handleFileSelected(this)">
-      <div class="chat-input-bar" style="position:relative">
-        <div style="position:relative;display:flex;align-items:center">
-          <button id="chatAttachBtn" onclick="toggleAttachMenu(event)" title="Attach file" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2);padding:4px;display:flex;align-items:center;justify-content:center;outline:none">📎</button>
-          <div id="attachMenu" class="hide" style="position:absolute;bottom:52px;left:0;background:#fff;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.15);display:flex;flex-direction:column;gap:2px;padding:6px;z-index:100;min-width:140px;border:1px solid #EDF2F7">
-            <button type="button" onclick="triggerFileInput('image/*,video/*')" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">🖼️ Gallery</button>
-            <button type="button" onclick="triggerFileInput('*/*')" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">📄 Document</button>
-            <button type="button" onclick="shareContactClicked()" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">👤 Contact ID</button>
-            <button type="button" onclick="shareCurrentLocation()" style="background:none;border:none;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text);outline:none">📍 Location</button>
-          </div>
+      <div class="profile-info-row">
+        <div class="profile-info-icon">🟢</div>
+        <div class="profile-info-text">
+          <div class="profile-info-label">Status</div>
+          <div class="profile-info-val" id="profilePageStatus">Online</div>
         </div>
-        <button class="voice-note-btn" id="voiceNoteBtn" title="Voice Note">🎙️</button>
-        
-        <div id="voicePreviewArea" class="hide" style="display:flex;align-items:center;gap:8px;flex:1;background:#F0F4FF;border-radius:22px;padding:4px 12px;margin:0 4px;border:1px solid #D0E0FF">
-          <button type="button" id="voiceDiscardBtn" onclick="clearVoicePreview()" style="background:none;border:none;font-size:13px;cursor:pointer;color:#C62828;padding:4px;font-weight:800;white-space:nowrap;outline:none">🗑️ Discard</button>
-          <audio id="voicePreviewPlayer" controls style="flex:1;height:28px"></audio>
-        </div>
-
-        <input id="chatInput" placeholder="Type a message..." maxlength="500">
-        <button class="chat-send-btn" id="chatSendBtn">➤</button>
       </div>
     </div>
   </div>
+</div>
+
+<!-- MY SETTINGS / MY PROFILE PAGE -->
+<div id="settingsPage" class="settings-page hide">
+  <div class="profile-header-bar">
+    <button class="profile-back-btn" onclick="closeMySettings()">←</button>
+    <div class="profile-header-title">My Profile & Settings</div>
+  </div>
+  <div class="profile-body">
+    <!-- My profile cover -->
+    <div class="profile-cover" style="margin-bottom:0">
+      <div class="profile-big-avatar" id="myProfileAvatar" onclick="openMyAvatarPicker()"></div>
+      <div class="profile-display-name" id="myProfileName"></div>
+      <div class="profile-username" id="myProfileUsername"></div>
+      <button onclick="openMyAvatarPicker()" style="background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.5);color:#fff;border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px">📷 Change Photo</button>
+    </div>
+    <div class="profile-info-section" style="margin-top:8px">
+      <div class="profile-info-row" style="cursor:pointer" onclick="editMyName()">
+        <div class="profile-info-icon">✏️</div>
+        <div class="profile-info-text">
+          <div class="profile-info-label">Display Name</div>
+          <div class="profile-info-val" id="myProfileNameEdit"></div>
+        </div>
+        <div style="color:#CBD5E0;font-size:16px">›</div>
+      </div>
+      <div class="profile-info-row">
+        <div class="profile-info-icon">🎂</div>
+        <div class="profile-info-text">
+          <div class="profile-info-label">Birthday</div>
+          <div class="profile-info-val" id="myProfileDob">Not set</div>
+        </div>
+      </div>
+    </div>
+    <div style="background:#fff;margin-bottom:8px">
+      <div class="settings-row" onclick="openLocationMap()">
+        <div class="settings-icon">📍</div>
+        <div class="settings-label">Family Location Map</div>
+        <div class="settings-arrow">›</div>
+      </div>
+      <div class="settings-row" onclick="openVoiceStatusModal()">
+        <div class="settings-icon">🎙️</div>
+        <div class="settings-label">Status Updates</div>
+        <div class="settings-arrow">›</div>
+      </div>
+      <div class="settings-row" onclick="openGroupsModal()">
+        <div class="settings-icon">👨‍👩‍👧‍👦</div>
+        <div class="settings-label">Groups</div>
+        <div class="settings-arrow">›</div>
+      </div>
+    </div>
+    <div style="background:#fff;margin-bottom:8px">
+      <div class="settings-row" onclick="doLogout()" style="color:#C62828">
+        <div class="settings-icon">🚪</div>
+        <div class="settings-label" style="color:#C62828">Logout</div>
+        <div class="settings-arrow" style="color:#C62828">›</div>
+      </div>
+    </div>
+  </div>
+  <!-- hidden file input for avatar change -->
+  <input type="file" accept="image/*" id="myAvatarFileInput" style="display:none" onchange="handleMyAvatarSelected(this)">
 </div>
 
 <!-- CALL SCREEN -->
@@ -420,20 +552,16 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   <div class="call-controls">
     <div class="call-btns-row">
       <button class="ctrl-btn" id="muteBtn">
-        <div class="ctrl-btn-circle">🎙️</div>
-        <span>Mute</span>
+        <div class="ctrl-btn-circle">🎙️</div><span>Mute</span>
       </button>
       <button class="ctrl-btn" id="holdBtn">
-        <div class="ctrl-btn-circle">⏸️</div>
-        <span>Hold</span>
+        <div class="ctrl-btn-circle">⏸️</div><span>Hold</span>
       </button>
       <button class="ctrl-btn" id="speakerBtn">
-        <div class="ctrl-btn-circle">🔊</div>
-        <span>Speaker</span>
+        <div class="ctrl-btn-circle">🔊</div><span>Speaker</span>
       </button>
       <button class="ctrl-btn" id="callMsgBtn">
-        <div class="ctrl-btn-circle">💬</div>
-        <span>Message</span>
+        <div class="ctrl-btn-circle">💬</div><span>Message</span>
       </button>
     </div>
     <button class="end-call-btn" id="callEndBtn">📵</button>
@@ -461,17 +589,15 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
   <div class="incoming-btns">
     <button class="inc-btn inc-decline" id="declineBtn">
-      <div class="inc-btn-circle">📵</div>
-      <span>Decline</span>
+      <div class="inc-btn-circle">📵</div><span>Decline</span>
     </button>
     <button class="inc-btn inc-accept" id="acceptBtn">
-      <div class="inc-btn-circle">📞</div>
-      <span>Accept</span>
+      <div class="inc-btn-circle">📞</div><span>Accept</span>
     </button>
   </div>
 </div>
 
-<!-- PROFILE MODAL -->
+<!-- PROFILE EDIT MODAL (my own profile photo/name) -->
 <div id="profileModal" class="modal-overlay hide">
   <div class="modal-card">
     <h3>Edit Profile ✏️</h3>
@@ -488,7 +614,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     </div>
     <div class="field">
       <label>Display Name</label>
-      <input id="profileNameInput" class="field input" placeholder="Your name" maxlength="50" style="width:100%;border:2px solid #E2E8F0;border-radius:14px;padding:12px 16px;font-size:15px;font-family:Nunito,sans-serif;outline:none">
+      <input id="profileNameInput" placeholder="Your name" maxlength="50" style="width:100%;border:2px solid #E2E8F0;border-radius:14px;padding:12px 16px;font-size:15px;font-family:Nunito,sans-serif;outline:none">
     </div>
     <div class="field" style="margin-top:12px">
       <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Birthday</label>
@@ -501,7 +627,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
 </div>
 
-<!-- SOS Confirmation Overlay (sender sees this) -->
+<!-- SOS Confirmation Overlay -->
 <div id="sosOverlay" class="modal-overlay hide">
   <div class="modal-card" style="background:#FFEBEE;border:2px solid #EF9A9A;text-align:center">
     <div style="font-size:48px;margin-bottom:8px">🆘</div>
@@ -512,7 +638,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
 </div>
 
-<!-- SOS Alert Overlay (receiver sees this) -->
+<!-- SOS Alert Overlay (receiver) -->
 <div id="sosAlertOverlay" class="modal-overlay hide" style="background:rgba(198,40,40,0.92)">
   <div class="modal-card" style="background:#fff;text-align:center">
     <div style="font-size:56px;margin-bottom:8px;animation:incoming-ring 0.5s infinite">🆘</div>
@@ -540,20 +666,18 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   <div class="modal-card" style="text-align:center">
     <h3>📱 Status Updates</h3>
     <p style="font-size:13px;color:var(--text2);margin:8px 0 16px">Post updates for your family (24hrs)</p>
-    
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
       <button id="vsRecordBtn" class="main-btn" onclick="recordVoiceStatus()" style="flex:1;font-size:13px;padding:10px 4px">🎙️ Voice</button>
       <button type="button" class="main-btn" onclick="triggerStatusFileInput()" style="flex:1;font-size:13px;padding:10px 4px;background:#E8F4FF;color:var(--primary)">🖼️ Media</button>
       <button type="button" class="main-btn" onclick="openTextStatusPrompt()" style="flex:1;font-size:13px;padding:10px 4px;background:#E8F5E9;color:#2E7D32">✍️ Text</button>
     </div>
     <input type="file" id="statusFileInput" style="display:none" onchange="handleStatusFileSelected(this)" accept="image/*,video/*">
-    
     <div id="vsStatusList" style="margin-top:16px;text-align:left;max-height:200px;overflow-y:auto"></div>
     <button class="cancel-btn" style="margin-top:12px" onclick="document.getElementById('voiceStatusModal').classList.add('hide')">Close</button>
   </div>
 </div>
 
-<!-- Fullscreen Image Preview Modal -->
+<!-- Fullscreen Image Preview -->
 <div id="imagePreviewModal" class="hide" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="this.classList.add('hide')">
   <img id="imagePreviewModalImg" style="max-width:95%;max-height:95%;object-fit:contain;border-radius:8px">
   <button style="position:absolute;top:20px;right:20px;background:none;border:none;color:#fff;font-size:30px;cursor:pointer">✕</button>
@@ -581,8 +705,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     </div>
     <button onclick="closeStatusViewer()" style="margin-left:auto;background:none;border:none;color:#fff;font-size:28px;cursor:pointer;padding:4px">✕</button>
   </div>
-  <div id="statusContentContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box">
-  </div>
+  <div id="statusContentContainer" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box"></div>
 </div>
 
 <!-- Groups Modal -->
@@ -614,12 +737,7 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
 </div>
 
-<style>
-.feat-btn{background:#F0F4FF;border:1.5px solid #C7D7F5;border-radius:20px;padding:8px 14px;font-size:12px;font-weight:700;color:#2C6FAC;cursor:pointer;white-space:nowrap;font-family:Nunito,sans-serif;transition:all .2s;flex-shrink:0}
-.feat-btn:active{background:#D6E4FF}
-</style>
-
-<!-- ADMIN PANEL MODAL - Only for superadmin -->
+<!-- ADMIN PANEL MODAL -->
 <div id="adminModal" class="modal-overlay hide">
   <div class="modal-card" style="width:95%;max-width:420px;max-height:85vh;display:flex;flex-direction:column">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -634,7 +752,43 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
 </div>
 
+<!-- CROPPER MODAL -->
+<div id="cropperModal" class="modal-overlay hide" style="z-index:10000">
+  <div class="modal-card" style="max-width:340px;padding:20px;text-align:center;border-radius:24px">
+    <h3 style="margin-bottom:15px;font-size:18px;font-weight:800;color:var(--text)">Adjust Photo 📐</h3>
+    <div id="cropViewport" style="width:200px;height:200px;border-radius:50%;overflow:hidden;border:3px solid var(--primary);background:#e2e8f0;position:relative;margin:0 auto 15px;cursor:move;user-select:none;touch-action:none">
+      <img id="cropImg" src="" style="position:absolute;top:0;left:0;transform-origin:0 0;max-width:none;width:auto;height:auto;pointer-events:none" alt="Cropping preview">
+    </div>
+    <div class="field" style="margin-bottom:15px">
+      <label style="font-size:12px;font-weight:700;color:var(--text2);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Zoom Slider 🔍</label>
+      <input type="range" id="cropZoomSlider" min="0.5" max="3" step="0.01" value="1" style="width:100%;height:6px;background:#e2e8f0;border-radius:3px;outline:none">
+    </div>
+    <div class="modal-btns">
+      <button class="main-btn" onclick="confirmCrop()">Crop & Save</button>
+      <button class="cancel-btn" onclick="closeCropperModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPDATE BANNER -->
+<div id="updateBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,#4A90D9,#2C6FAC);color:#fff;padding:14px 20px;z-index:99999;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 20px rgba(74,144,217,0.4);animation:slideUp .4s ease;font-family:'Nunito',sans-serif;">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:22px">🔄</span>
+    <div>
+      <div style="font-weight:800;font-size:14px">New Update Available!</div>
+      <div style="font-size:11px;opacity:.85">Tap to install latest version</div>
+    </div>
+  </div>
+  <button id="updateNowBtn" style="background:#fff;color:#2C6FAC;border:none;border-radius:20px;padding:10px 20px;font-weight:800;font-size:13px;cursor:pointer;font-family:'Nunito',sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.15)">Update Now ✨</button>
+  <button onclick="document.getElementById('updateBanner').style.display='none'" style="background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px;opacity:.8">✕</button>
+</div>
+
+<style>
+@keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
+
 <script>
+// Auth event handlers
 (function () {
   function go(id, hideId) {
     var a = document.getElementById(id);
@@ -697,128 +851,40 @@ body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);min-
     if (t.closest('#showLogin')) { e.preventDefault(); go('loginPage', 'registerPage'); return; }
     if (t.closest('#loginBtn')) {
       e.preventDefault();
-      if (window.doLogin) window.doLogin();
-      else loginFallback();
+      if (window.doLogin) window.doLogin(); else loginFallback();
       return;
     }
     if (t.closest('#regBtn')) {
       e.preventDefault();
-      if (window.doRegister) window.doRegister();
-      else registerFallback();
+      if (window.doRegister) window.doRegister(); else registerFallback();
     }
   });
 })();
 </script>
-<script src="/js/app.js?v=fc22"></script>
-
-<!-- UPDATE BANNER -->
-<div id="updateBanner" style="
-  display:none;
-  position:fixed;
-  bottom:0;left:0;right:0;
-  background:linear-gradient(135deg,#4A90D9,#2C6FAC);
-  color:#fff;
-  padding:14px 20px;
-  z-index:99999;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  box-shadow:0 -4px 20px rgba(74,144,217,0.4);
-  animation:slideUp .4s ease;
-  font-family:'Nunito',sans-serif;
-">
-  <div style="display:flex;align-items:center;gap:10px">
-    <span style="font-size:22px">🔄</span>
-    <div>
-      <div style="font-weight:800;font-size:14px">New Update Available!</div>
-      <div style="font-size:11px;opacity:.85">Tap to install latest version</div>
-    </div>
-  </div>
-  <button id="updateNowBtn" style="
-    background:#fff;
-    color:#2C6FAC;
-    border:none;
-    border-radius:20px;
-    padding:10px 20px;
-    font-weight:800;
-    font-size:13px;
-    cursor:pointer;
-    font-family:'Nunito',sans-serif;
-    white-space:nowrap;
-    box-shadow:0 2px 8px rgba(0,0,0,0.15);
-  ">Update Now ✨</button>
-  <button onclick="document.getElementById('updateBanner').style.display='none'" style="
-    background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px;opacity:.8
-  ">✕</button>
-</div>
-
-<!-- CROPPER MODAL -->
-<div id="cropperModal" class="modal-overlay hide" style="z-index: 10000;">
-  <div class="modal-card" style="max-width:340px; padding:20px; text-align:center; border-radius:24px">
-    <h3 style="margin-bottom:15px; font-size:18px; font-weight:800; color:var(--text)">Adjust Photo 📐</h3>
-    
-    <div id="cropViewport" style="width:200px; height:200px; border-radius:50%; overflow:hidden; border:3px solid var(--primary); background:#e2e8f0; position:relative; margin:0 auto 15px; cursor:move; user-select:none; touch-action:none">
-      <img id="cropImg" src="" style="position:absolute; top:0; left:0; transform-origin:0 0; max-width:none; width:auto; height:auto; pointer-events:none" alt="Cropping preview">
-    </div>
-    
-    <div class="field" style="margin-bottom:15px">
-      <label style="font-size:12px; font-weight:700; color:var(--text2); display:block; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px">Zoom Slider 🔍</label>
-      <input type="range" id="cropZoomSlider" min="0.5" max="3" step="0.01" value="1" style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; outline:none">
-    </div>
-    
-    <div class="modal-btns">
-      <button class="main-btn" onclick="confirmCrop()">Crop & Save</button>
-      <button class="cancel-btn" onclick="closeCropperModal()">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<style>
-@keyframes slideUp {
-  from { transform: translateY(100%); opacity:0; }
-  to   { transform: translateY(0);    opacity:1; }
-}
-@keyframes slideDown {
-  from { transform: translateY(-20px); opacity:0; }
-  to   { transform: translateY(0);     opacity:1; }
-}
-</style>
+<script src="/js/app.js?v=fc24"></script>
 
 <script>
-// ── Service Worker Registration + Update Detection ──
+// Service Worker + Update Detection
 if ('serviceWorker' in navigator) {
   let newWorker;
-
   navigator.serviceWorker.register('/sw.js').then(reg => {
-    // Check for updates every 60 seconds
     setInterval(() => reg.update(), 60000);
-
     reg.addEventListener('updatefound', () => {
       newWorker = reg.installing;
       newWorker.addEventListener('statechange', () => {
-        // New SW installed & waiting — show banner
         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
           showUpdateBanner(newWorker);
         }
       });
     });
   }).catch(() => {});
-
-  // Reload after new SW takes control
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload();
-  });
-
+  navigator.serviceWorker.addEventListener('controllerchange', () => { window.location.reload(); });
   function showUpdateBanner(worker) {
     const banner = document.getElementById('updateBanner');
-    const btn    = document.getElementById('updateNowBtn');
+    const btn = document.getElementById('updateNowBtn');
     if (!banner || !btn) return;
     banner.style.display = 'flex';
-    btn.onclick = () => {
-      btn.textContent = 'Installing... ⏳';
-      btn.disabled = true;
-      worker.postMessage('SKIP_WAITING');
-    };
+    btn.onclick = () => { btn.textContent = 'Installing... ⏳'; btn.disabled = true; worker.postMessage('SKIP_WAITING'); };
   }
 }
 </script>

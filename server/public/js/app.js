@@ -191,15 +191,63 @@ window.addEventListener('unhandledrejection', e => slog('promise_rejection', { r
 /* ═══════════════════════════════════════════
    AUTH (logout — login/register via inline handler in index.html)
 ═══════════════════════════════════════════ */
-onClick('logoutBtn', () => {
+onClick('logoutBtn', () => doLogout());
+
+function doLogout() {
   localStorage.removeItem('fc_user'); localStorage.removeItem('fc_name'); localStorage.removeItem('fc_role');
-  if (window.AndroidApp) {
-    try { window.AndroidApp.clearLogin(); } catch(e){}
+  if (window.AndroidApp) { try { window.AndroidApp.clearLogin(); } catch(e){} }
+  if (ws) { try { ws.close(); } catch(e){} }
+  myUsername = ''; myName = ''; myRole = 'user';
+  $('mainPage').classList.add('hide');
+  $('loginPage').classList.remove('hide');
+  try { $('loginUser').value=''; $('loginPass').value=''; } catch(e){}
+  closeMySettings();
+}
+window.doLogout = doLogout;
+
+/* ── Tab switching ── */
+let currentTab = 'status';
+function switchTab(tab) {
+  currentTab = tab;
+  ['status','chats','calls'].forEach(t => {
+    const btn = $('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    const content = $(t + 'Tab');
+    if (btn) btn.classList.toggle('active', t === tab);
+    if (content) content.classList.toggle('hide', t !== tab);
+  });
+  if (tab === 'chats') loadChatContacts();
+}
+window.switchTab = switchTab;
+
+/* ── Android Back Button Handler ── */
+window.handleAppBack = function() {
+  // 1. Chat page open → go back to chat list
+  const chatPage = $('chatPage');
+  if (chatPage && !chatPage.classList.contains('hide')) {
+    closeChatPage();
+    return true;
   }
-  if (ws) ws.close();
-  $('mainPage').classList.add('hide'); $('loginPage').classList.remove('hide');
-  $('loginUser').value=''; $('loginPass').value='';
-});
+  // 2. Profile page open → close it
+  const profilePage = $('profilePage');
+  if (profilePage && !profilePage.classList.contains('hide')) {
+    closeProfilePage();
+    return true;
+  }
+  // 3. Settings page open → close it
+  const settingsPage = $('settingsPage');
+  if (settingsPage && !settingsPage.classList.contains('hide')) {
+    closeMySettings();
+    return true;
+  }
+  // 4. Any open modal → close it
+  const modals = document.querySelectorAll('.modal-overlay:not(.hide)');
+  if (modals.length > 0) {
+    modals[modals.length-1].classList.add('hide');
+    return true;
+  }
+  // Nothing to go back to
+  return false;
+};
 
 /* ═══════════════════════════════════════════
    WEBSOCKET
@@ -229,31 +277,38 @@ function reconnectWS() {
 
 function connectApp(username, name, role) {
   myUsername=username; myName=name; myRole=role||'user';
-  hideSplashScreen(); // Exit splash screen immediately on connect
-  
+  hideSplashScreen();
+
+  // Hide auth pages, show main
+  const lp = $('loginPage'); const rp = $('registerPage'); const mp = $('mainPage');
+  if (lp) lp.classList.add('hide');
+  if (rp) rp.classList.add('hide');
+  if (mp) mp.classList.remove('hide');
+
   const AC = window.AudioContext || window.webkitAudioContext;
   slog('client_ready',{ua:navigator.userAgent, audioWorklet:!!(AC&&AC.prototype&&('audioWorklet' in AC.prototype))});
-  $('loginPage').classList.add('hide'); $('registerPage').classList.add('hide'); $('mainPage').classList.remove('hide');
+
   // Load profile for avatar
   fetch(`${HTTP_URL}/api/profile/${username}`).then(r=>r.json()).then(u=>{
     if(u.avatar) myAvatar=u.avatar;
     if(u.role) myRole=u.role;
     if(u.name) myName=u.name;
     updateTopbar();
-    // Start new features after profile loaded
+    updateMyProfilePage();
     startBatteryMonitor();
     startLocationTracking();
     loadGroups();
   }).catch(()=>{ updateTopbar(); });
-  
+
   ws=new WebSocket(`${WS_URL}/ws?username=${encodeURIComponent(username)}&name=${encodeURIComponent(name)}`);
   ws.onopen=()=>{
     slog('ws_open',{});
     updateTopbar();
     loadContacts();
+    loadChatContacts();
     hideSplashScreen();
     if (refreshInterval) clearInterval(refreshInterval);
-    refreshInterval=setInterval(loadContacts,8000);
+    refreshInterval=setInterval(()=>{ loadContacts(); loadChatContacts(); },8000);
   };
   initSOSButton();
   ws.onmessage=e=>handleMsg(JSON.parse(e.data));
@@ -900,7 +955,7 @@ async function loadContacts(){
         const safeName = u.name.replace(/"/g,'&quot;').replace(/'/g,"\\'");
         return `
           <div class="contact-item" onclick="openChat('${safeUser}','${safeName}')" style="cursor:pointer">
-            <div class="${avatarClass}" data-vsuser="${u.username}" style="overflow:hidden">
+            <div class="${avatarClass}" data-vsuser="${u.username}" style="overflow:hidden;cursor:pointer" onclick="event.stopPropagation();openProfilePage('${safeUser}','${safeName}',${u.avatar?`'${u.avatar}'`:'null'},${u.online?'true':'false'})">
               ${avatarContent}
               <span class="status-dot ${u.online?'dot-on':'dot-off'}" data-user="${u.username}"></span>
             </div>
@@ -1004,16 +1059,7 @@ function initMainUI() {
     if (u) searchUsers(u);
   });
   bindEl('searchUser', 'onkeydown', e => { if (e.key === 'Enter') { const b = $('callUserBtn'); if (b) b.click(); } });
-  onClick('tabContacts', function() {
-    $('tabContacts').classList.add('active'); $('tabChat').classList.remove('active');
-    $('contactsView').classList.remove('hide'); $('chatView').classList.add('hide');
-    loadContacts();
-  });
-  onClick('tabChat', function() {
-    $('tabChat').classList.add('active'); $('tabContacts').classList.remove('active');
-    $('contactsView').classList.add('hide'); $('chatView').classList.remove('hide');
-    loadChatContacts();
-  });
+  // Tab switching now handled by switchTab() called from HTML onclick attributes
   onClick('chatSendBtn', () => {
     if (pendingVoiceB64 && pendingVoiceMime) {
       if (currentGroupId) {
@@ -1084,102 +1130,100 @@ function loadChatContacts(){
         return tsB - tsA;
       });
 
-      $('chatContactsList').innerHTML = friends.length === 0
-        ? '<div class="empty-state"><div class="empty-icon">💬</div><p>No friends yet</p><small>Add family members first!</small></div>'
-        : `<div class="section-title">💬 Messages</div>` + friends.map(u=>{
+      // Populate chats tab
+      const chatsTab = $('chatsTab');
+      const noChats = $('noChats');
+      const chatContactsList = $('chatContactsList');
+      if (!chatContactsList) return;
+
+      if (friends.length === 0) {
+        if (noChats) noChats.classList.remove('hide');
+        chatContactsList.innerHTML = '';
+        return;
+      }
+      if (noChats) noChats.classList.add('hide');
+
+      chatContactsList.innerHTML = friends.map(u=>{
             const avatarContent = u.avatar ? `<img src="${u.avatar}" alt="${u.name}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : u.name.charAt(0).toUpperCase();
-            
             const userMsgs = msgs[u.username] || [];
             const lastMsg = userMsgs[userMsgs.length - 1];
-            
-            let lastMsgText = 'Say hello! 👋';
+            let lastMsgText = 'Tap to chat 👋';
             let lastMsgTime = '';
             let tickHtml = '';
-            
             if (lastMsg) {
-              lastMsgTime = lastMsg.ts ? new Date(lastMsg.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+              lastMsgTime = lastMsg.ts ? formatMsgTime(lastMsg.ts) : '';
               if (lastMsg.voiceMime) {
                 const mime = lastMsg.voiceMime;
                 if (mime.startsWith('audio/')) lastMsgText = '🎤 Voice Note';
                 else if (mime.startsWith('image/')) lastMsgText = '🖼️ Photo';
                 else if (mime.startsWith('video/')) lastMsgText = '🎥 Video';
                 else if (mime === 'location') lastMsgText = '📍 Location';
-                else if (mime === 'contact') lastMsgText = '👤 Contact Card';
+                else if (mime === 'contact') lastMsgText = '👤 Contact';
                 else lastMsgText = `📄 ${lastMsg.text || 'Document'}`;
               } else {
                 lastMsgText = lastMsg.text || '';
               }
-              
-              if (lastMsg.from_user === myUsername) {
-                if (lastMsg.status === 'read') {
-                  tickHtml = `<span style="color: #34B7F1; font-weight: bold; margin-right: 4px; font-size: 13px;">✓✓</span>`;
-                } else if (lastMsg.status === 'delivered') {
-                  tickHtml = `<span style="color: #8696a0; font-weight: bold; margin-right: 4px; font-size: 13px;">✓✓</span>`;
-                } else {
-                  tickHtml = `<span style="color: #8696a0; font-weight: bold; margin-right: 4px; font-size: 13px;">✓</span>`;
-                }
+              if (lastMsg.from_user === myUsername || lastMsg.from === myUsername) {
+                if (lastMsg.status === 'read') tickHtml = `<span style="color:#34B7F1;font-size:12px">✓✓ </span>`;
+                else if (lastMsg.status === 'delivered') tickHtml = `<span style="color:#8696a0;font-size:12px">✓✓ </span>`;
+                else tickHtml = `<span style="color:#8696a0;font-size:12px">✓ </span>`;
               }
             }
-            
-            const unreadCount = userMsgs.filter(m => m.from_user !== myUsername && m.status !== 'read').length;
-            const badgeHtml = unreadCount > 0 
-              ? `<div style="background: #25D366; color: #fff; font-size: 10px; font-weight: bold; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; margin-top: 4px; flex-shrink:0;">${unreadCount}</div>`
-              : '';
-            
-            return `
-              <div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)" style="cursor:pointer;padding:12px 16px;border-bottom:1px solid #EDF2F7;display:flex;align-items:center;gap:12px">
-                <div class="contact-avatar ${u.role==='superadmin'?'creator-av':''}" style="width:48px;height:48px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));flex-shrink:0;position:relative">
-                  ${avatarContent}
-                  <span class="status-dot ${u.online?'dot-on':'dot-off'}" data-user="${u.username}" style="position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;border:2px solid #fff"></span>
+            const unreadCount = userMsgs.filter(m => (m.from_user || m.from) !== myUsername && m.status !== 'read').length;
+            const badgeHtml = unreadCount > 0 ? `<div class="unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</div>` : '';
+
+            return `<div class="contact-item" data-username="${u.username}" data-name="${u.name.replace(/"/g,'&quot;')}" onclick="openChat(this.dataset.username,this.dataset.name)">
+              <div class="contact-avatar" style="position:relative;width:50px;height:50px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));flex-shrink:0">
+                ${avatarContent}
+                <span class="status-dot ${u.online?'dot-on':'dot-off'}" style="position:absolute;bottom:1px;right:1px;width:11px;height:11px;border-radius:50%;border:2px solid #fff"></span>
+              </div>
+              <div class="contact-info">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+                  <div style="font-weight:800;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${escHtml(u.name)}</div>
+                  <div style="font-size:11px;color:${unreadCount>0?'var(--green)':'var(--text2)'};font-weight:700;flex-shrink:0">${lastMsgTime}</div>
                 </div>
-                <div class="contact-info" style="flex:1;min-width:0">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                    <div class="contact-name" style="font-weight:800;font-size:15px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name}</div>
-                    <div style="font-size:11px;color:${unreadCount > 0 ? '#25D366' : 'var(--text2)'};font-weight:700">${lastMsgTime}</div>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;align-items:center">
-                    <div class="contact-sub" style="font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;flex:1">${tickHtml}${escHtml(lastMsgText)}</div>
-                    ${badgeHtml}
-                  </div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div style="font-size:13px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">${tickHtml}${escHtml(lastMsgText)}</div>
+                  ${badgeHtml}
                 </div>
-              </div>`;
+              </div>
+            </div>`;
           }).join('');
     });
   });
 }
 
-/* ─ Update chat header for 1-to-1 chat ─ */
+function formatMsgTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = now - d;
+  if (diff < 86400000 && d.getDate() === now.getDate()) {
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  return d.toLocaleDateString([], {day:'2-digit', month:'2-digit'});
+}
+
+/* ─ Update chat header ─ */
 function setChatHeader(username, name, avatar, online, isGroup) {
-  // Avatar
-  const av = document.getElementById('chatHeaderAvatar');
+  const av = $('chatHeaderAvatar');
   if (av) {
     if (avatar) {
       av.innerHTML = `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
     } else if (isGroup) {
-      av.innerHTML = '👨‍👩‍👧‍👦';
-      av.style.background = 'linear-gradient(135deg,#FF9800,#F44336)';
-      av.style.fontSize = '20px';
+      av.innerHTML = '👨‍👩‍👧‍👦'; av.style.background='linear-gradient(135deg,#FF9800,#F44336)'; av.style.fontSize='20px';
     } else {
-      av.textContent = (name||'?').charAt(0).toUpperCase();
-      av.style.background = 'linear-gradient(135deg,var(--primary),var(--primary-dark))';
-      av.style.fontSize = '18px';
+      av.textContent=(name||'?').charAt(0).toUpperCase();
+      av.style.background='linear-gradient(135deg,var(--primary),var(--primary-dark))';
     }
   }
-  // Name
-  const cw = document.getElementById('chatWith');
-  if (cw) cw.textContent = name || username;
-  // Sub status
-  const sub = document.getElementById('chatHeaderSub');
+  const cw = $('chatWith'); if (cw) cw.textContent = name || username;
+  const sub = $('chatHeaderSub');
   if (sub) {
-    if (isGroup) sub.textContent = 'Family Group';
-    else sub.textContent = online ? '● Online' : '○ Offline';
-    sub.style.color = (!isGroup && online) ? 'var(--green)' : 'var(--text2)';
+    if (isGroup) { sub.textContent='Family Group'; sub.style.color='var(--text2)'; }
+    else { sub.textContent = online ? '● Online' : '○ Offline'; sub.style.color = online ? 'var(--green)' : 'var(--text2)'; }
   }
-  // Buttons — group shows broadcast, 1-to-1 shows call
-  const callBtn = document.getElementById('chatCallBtn');
-  const broadcastBtn = document.getElementById('chatBroadcastBtn');
+  const callBtn = $('chatCallBtn');
   if (callBtn) callBtn.style.display = isGroup ? 'none' : 'flex';
-  if (broadcastBtn) broadcastBtn.style.display = isGroup ? 'flex' : 'none';
 }
 
 function openChat(username, name) {
@@ -1192,35 +1236,38 @@ function openChat(username, name) {
 
   setChatHeader(username, displayName, avatar, online, false);
 
-  // Switch to chat view
-  const chatView = document.getElementById('chatView');
-  const contactsView = document.getElementById('contactsView');
-  if (chatView) chatView.classList.remove('hide');
-  if (contactsView) contactsView.classList.add('hide');
-  // Make sure tab state correct
-  const tabChat = document.getElementById('tabChat');
-  const tabContacts = document.getElementById('tabContacts');
-  if (tabChat) tabChat.classList.add('active');
-  if (tabContacts) tabContacts.classList.remove('active');
+  // Show full-screen chat page
+  const chatPage = $('chatPage');
+  if (chatPage) chatPage.classList.remove('hide');
 
-  document.getElementById('chatListView').classList.add('hide');
-  document.getElementById('chatAreaView').classList.remove('hide');
-
+  // Load messages & mark as read
   fetch(`${HTTP_URL}/api/messages/${myUsername}`).then(r => r.json()).then(data => {
     const msgs = data[username] || [];
-    document.getElementById('chatMessages').innerHTML = msgs.map(m => renderMsgHtml(m, false)).join('');
-    document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+    const chatMsgs = $('chatMessages');
+    if (chatMsgs) {
+      chatMsgs.innerHTML = msgs.map(m => renderMsgHtml(m, false)).join('');
+      chatMsgs.scrollTop = chatMsgs.scrollHeight;
+    }
+    // Mark as read — clears unread badge
     send({ type: 'read_all', from: username });
+    // Refresh chat list to clear badge
+    setTimeout(() => loadChatContacts(), 500);
   });
-  const inp = document.getElementById('chatInput');
-  if (inp) inp.focus();
+  const inp = $('chatInput');
+  if (inp) { inp.focus(); }
 }
 
-function closeChatArea() {
-  document.getElementById('chatAreaView').classList.add('hide');
-  document.getElementById('chatListView').classList.remove('hide');
+function closeChatPage() {
+  const chatPage = $('chatPage');
+  if (chatPage) chatPage.classList.add('hide');
   chatTarget = ''; currentGroupId = null;
+  // Dismiss keyboard
+  const inp = $('chatInput');
+  if (inp) inp.blur();
+  // Refresh chat list badges
+  loadChatContacts();
 }
+function closeChatArea() { closeChatPage(); } // backwards compat
 
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 /* ─ Chat header action buttons ─ */
@@ -1243,16 +1290,125 @@ function chatHeaderBroadcast() {
 }
 
 function openChatProfile() {
-  // Tapping header name/avatar shows mini profile info
-  if (currentGroupId) return; // group — no profile
+  if (currentGroupId) return;
   if (!chatTarget) return;
   const friend = friendsCache.find(f => f.username === chatTarget);
-  if (!friend) return;
-  const batInfo = batteryCache[chatTarget];
-  const batText = batInfo ? `\nBattery: ${Math.round(batInfo.level*100)}%${batInfo.charging?' ⚡':''}` : '';
-  const onlineText = friend.online ? '✅ Online now' : '⭕ Offline';
-  alert(`👤 ${friend.name}\n@${friend.username}\n${onlineText}${batText}`);
+  openProfilePage(chatTarget, friend ? friend.name : chatTarget, friend ? friend.avatar : null, friend ? friend.online : false);
 }
+
+/* ── Full-screen Profile Page ── */
+function openProfilePage(username, name, avatar, online) {
+  const page = $('profilePage');
+  if (!page) return;
+  // Set avatar
+  const av = $('profilePageAvatar');
+  if (av) {
+    if (avatar) { av.innerHTML = `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`; }
+    else { av.textContent = (name||'?').charAt(0).toUpperCase(); }
+  }
+  const n = $('profilePageName'); if (n) n.textContent = name || username;
+  const un = $('profilePageUsername'); if (un) un.textContent = '@' + username;
+  const ui = $('profilePageUsernameInfo'); if (ui) ui.textContent = username;
+  const st = $('profilePageStatus'); if (st) { st.textContent = online ? '🟢 Online' : '⚪ Offline'; }
+  // Store for action buttons
+  page.dataset.username = username;
+  page.dataset.name = name || username;
+  page.classList.remove('hide');
+}
+function closeProfilePage() {
+  const page = $('profilePage');
+  if (page) page.classList.add('hide');
+}
+function profilePageMessage() {
+  const page = $('profilePage');
+  if (!page) return;
+  const u = page.dataset.username, n = page.dataset.name;
+  closeProfilePage();
+  openChat(u, n);
+}
+function profilePageCall() {
+  const page = $('profilePage');
+  if (!page) return;
+  const u = page.dataset.username, n = page.dataset.name;
+  closeProfilePage();
+  startCall(u, n);
+}
+function profilePageBlock() {
+  const page = $('profilePage');
+  if (!page) return;
+  const u = page.dataset.username;
+  if (confirm(`Block @${u}? They won't be able to call or message you.`)) {
+    alert('Block feature coming soon.');
+  }
+}
+
+/* ── My Settings / My Profile Page ── */
+function openMySettings() {
+  const page = $('settingsPage');
+  if (page) page.classList.remove('hide');
+  updateMyProfilePage();
+}
+function closeMySettings() {
+  const page = $('settingsPage');
+  if (page) page.classList.add('hide');
+}
+function updateMyProfilePage() {
+  const av = $('myProfileAvatar');
+  if (av) {
+    if (myAvatar) { av.innerHTML = `<img src="${myAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`; }
+    else { av.textContent = (myName||'?').charAt(0).toUpperCase(); }
+  }
+  const mn = $('myProfileName'); if (mn) mn.textContent = myName || '';
+  const mun = $('myProfileUsername'); if (mun) mun.textContent = '@' + (myUsername || '');
+  const mne = $('myProfileNameEdit'); if (mne) mne.textContent = myName || '';
+  // Load DOB
+  if (myDob) { const d = $('myProfileDob'); if (d) d.textContent = myDob; }
+}
+function openMyAvatarPicker() {
+  const inp = $('myAvatarFileInput');
+  if (inp) inp.click();
+}
+function handleMyAvatarSelected(input) {
+  if (!input.files || !input.files[0]) return;
+  // Reuse existing avatar upload flow
+  const avInput = $('avatarFileInput');
+  if (avInput) {
+    // Transfer file to the real input and open profile modal
+    const dt = new DataTransfer();
+    dt.items.add(input.files[0]);
+    avInput.files = dt.files;
+    const ev = new Event('change', { bubbles: true });
+    avInput.dispatchEvent(ev);
+    // Open profile modal
+    openProfileModal();
+    closeMySettings();
+  }
+}
+function editMyName() {
+  const newName = prompt('Enter your new display name:', myName || '');
+  if (!newName || !newName.trim()) return;
+  const trimmed = newName.trim();
+  fetch(`${HTTP_URL}/api/profile/${myUsername}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name: trimmed })
+  }).then(r => r.json()).then(() => {
+    myName = trimmed;
+    localStorage.setItem('fc_name', trimmed);
+    if (window.AndroidApp) { try { window.AndroidApp.saveLogin(myUsername, trimmed, myRole); } catch(e){} }
+    updateTopbar();
+    updateMyProfilePage();
+  }).catch(() => alert('Could not update name. Try again.'));
+}
+window.openMySettings = openMySettings;
+window.closeMySettings = closeMySettings;
+window.openProfilePage = openProfilePage;
+window.closeProfilePage = closeProfilePage;
+window.profilePageMessage = profilePageMessage;
+window.profilePageCall = profilePageCall;
+window.profilePageBlock = profilePageBlock;
+window.openChat = openChat;
+window.closeChatPage = closeChatPage;
 
 let pendingVoiceB64 = null;
 let pendingVoiceMime = null;
@@ -1261,7 +1417,8 @@ let statusAudioElement = null;
 
 function renderMsgHtml(m, isGroup) {
   const time = m.ts ? new Date(m.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
-  const mine = m.from === myUsername;
+  const fromUser = m.from || m.from_user || '';
+  const mine = fromUser === myUsername;
   
   let contentHtml = '';
   if (m.voiceData && m.voiceMime) {
@@ -1307,7 +1464,7 @@ function renderMsgHtml(m, isGroup) {
   }
 
   return `<div class="chat-msg ${mine ? 'chat-mine' : 'chat-other'}" data-msgid="${m.id || ''}">
-    ${showSender ? `<span class="msg-sender-name">@${m.from}</span>` : ''}
+    ${showSender ? `<span class="msg-sender-name">@${fromUser}</span>` : ''}
     <div style="display:inline-block">${contentHtml}</div>
     ${time ? `<span style="font-size:9px;opacity:.5;margin-left:6px;display:inline-block;vertical-align:middle">${time}</span>` : ''}${tickHtml}
   </div>`;
@@ -1486,9 +1643,10 @@ function saveProfile(){
     body: JSON.stringify({ username: myUsername, name: name||undefined, avatar: avatar||undefined, dob: dob||undefined })
   }).then(r=>r.json()).then(r=>{
     if(r.success){
-      if(name){ myName=r.user.name; localStorage.setItem('fc_name',r.user.name); }
+      if(name){ myName=r.user.name; localStorage.setItem('fc_name',r.user.name); if(window.AndroidApp){try{window.AndroidApp.saveLogin(myUsername,r.user.name,myRole);}catch(e){}} }
       if(avatar){ myAvatar=avatar; }
       updateTopbar();
+      updateMyProfilePage();
       showToast('✅ Profile updated!');
       closeProfileModal();
       loadContacts();
@@ -2096,14 +2254,19 @@ function renderGroupsInUI(groups) {
 
 function openGroupChat(groupId, groupName) {
   currentGroupId = groupId;
-  const chatWith = document.getElementById('chatWith');
-  if (chatWith) chatWith.textContent = `👨‍👩‍👧‍👦 ${groupName}`;
-  const listView = document.getElementById('chatListView');
-  const areaView = document.getElementById('chatAreaView');
-  if (listView) listView.classList.add('hide');
-  if (areaView) areaView.classList.remove('hide');
+  chatTarget = '';
+  // Setup header for group
+  const av = $('chatHeaderAvatar');
+  if (av) { av.innerHTML = '👨‍👩‍👧‍👦'; av.style.background='linear-gradient(135deg,#FF9800,#F44336)'; }
+  const cw = $('chatWith'); if (cw) cw.textContent = groupName;
+  const sub = $('chatHeaderSub'); if (sub) { sub.textContent = 'Family Group'; sub.style.color='var(--text2)'; }
+  const callBtn = $('chatCallBtn'); if (callBtn) callBtn.style.display = 'none';
+  // Show chat page
+  const chatPage = $('chatPage');
+  if (chatPage) chatPage.classList.remove('hide');
+  // Load messages
   fetch(`${HTTP_URL}/api/group-messages/${groupId}`).then(r=>r.json()).then(msgs => {
-    const chatMessages = document.getElementById('chatMessages');
+    const chatMessages = $('chatMessages');
     if (!chatMessages) return;
     chatMessages.innerHTML = msgs.map(m => renderMsgHtml(m, true)).join('');
     chatMessages.scrollTop = chatMessages.scrollHeight;

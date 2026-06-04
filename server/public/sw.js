@@ -1,6 +1,6 @@
 // FamilyCall Service Worker
 // ─── CHANGE THIS VERSION whenever you deploy new code ───
-const VERSION = 'fc-v18';
+const VERSION = 'fc-v19';
 const CACHE = `familycall-${VERSION}`;
 
 // Files to cache for offline
